@@ -1,3 +1,5 @@
+import { isAppleDevice } from "@/utils/streamType2Fallback";
+
 export function setupSyncPlayback(video, audio, sources, selectedQuality, diffText, selectedPlaybackRate) {
   if (!video || !audio) return;
 
@@ -60,13 +62,18 @@ export function setupSyncPlayback(video, audio, sources, selectedQuality, diffTe
   }
   const videoSources = normalizeSources(videoSrc);
   const audioSources = normalizeSources(audioSrc).slice(0, 1);
+  const isApple = isAppleDevice();
+  const appleIdx = typeof videoSrc?._appleSourceIndex === "number" ? videoSrc._appleSourceIndex : 0;
+  const targetVideoSources = (safariMode || isApple) && videoSrc?._appleFallbackActive
+    ? videoSources.slice(appleIdx, appleIdx + 1)
+    : videoSources;
 
   if (safariMode) {
     video.pause();
     audio.pause();
     clearMediaSources(video);
     clearMediaSources(audio);
-    setMediaSources(video, videoSources);
+    setMediaSources(video, targetVideoSources);
     setMediaSources(audio, audioSources);
 
     // 初期倍速反映
@@ -148,7 +155,7 @@ export function setupSyncPlayback(video, audio, sources, selectedQuality, diffTe
   audio.pause();
   clearMediaSources(video);
   clearMediaSources(audio);
-  setMediaSources(video, videoSources);
+  setMediaSources(video, targetVideoSources);
   setMediaSources(audio, audioSources);
 
   let isStartupJumpDone = false;

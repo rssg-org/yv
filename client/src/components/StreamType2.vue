@@ -30,18 +30,20 @@
         preload="metadata"
         :autoplay="autoplayEnabled"
         :loop="repeatEnabled"
-        :key="`${playerRenderKey}:${sources[selectedQuality]?.url || ''}`"
+        :key="`${playerRenderKey}:${selectedQuality}:${appleSourceIndex}:${sources[selectedQuality]?.url || ''}`"
         @canplay="markPlayerReady"
         @loadedmetadata="markPlayerReady"
         @loadeddata="markPlayerReady"
         @playing="markPlayerPlaying"
         @waiting="markPlayerBuffering"
+        @error="handleVideoError"
       >
         <source
           v-for="s in getSingleStreamSources(sources[selectedQuality])"
           :key="s.url"
           :src="s.url"
           :type="s.mimeType || (s.isM3u8 ? 'application/x-mpegURL' : undefined)"
+          @error="handleSourceError"
         />
       </video>
 
@@ -124,18 +126,20 @@
           preload="auto"
           :autoplay="autoplayEnabled"
           controls
-          :key="`${playerRenderKey}:${separateAvKey}:video`"
+          :key="`${playerRenderKey}:${separateAvKey}:${selectedQuality}:${appleSourceIndex}:video`"
           @canplay="markPlayerReady"
           @loadedmetadata="markPlayerReady"
           @loadeddata="markPlayerReady"
           @playing="markPlayerPlaying"
           @waiting="markPlayerBuffering"
+          @error="handleVideoError"
         >
           <source
             v-for="s in getVideoSourcesForEntry(sources[selectedQuality])"
             :key="s.url"
             :src="s.url"
             :type="s.mimeType"
+            @error="handleSourceError"
           />
         </video>
         <div v-if="showUnmutePrompt" class="unmute-prompt" @click.stop="handleUnmuteClick">
@@ -258,6 +262,15 @@ import {
   selectPlaybackSubtitleTracks,
 } from "@/utils/subtitleTracks";
 import { claimType2StreamRequestSlot } from "@/utils/type2StreamRequestCooldown";
+import {
+  isAppleDevice as isAppleDeviceCheck,
+  isM3u8Source,
+  getAllSingleStreamSources,
+  getSingleStreamSourcesList,
+  getVideoSourcesForEntryList,
+  hasPlayableSource,
+  selectBestPlayableQuality,
+} from "@/utils/streamType2Fallback";
 
 const props = defineProps({
   videoId: { type: String, required: true }
@@ -321,6 +334,12 @@ const separateAvKey = ref(0);
 // サーバー応答後に media 要素を確実に作り直すためのキー。
 // 待機画面から復帰するときに古い video/audio の内部状態を持ち越さない。
 const playerRenderKey = ref(0);
+const appleFallbackActive = ref(false);
+const appleSourceIndex = ref(0);
+let lastAppleFallbackAttemptTime = 0;
+const m3u8PlaybackDisabled = ref(false);
+const M3U8_LOAD_TIMEOUT_MS = 10_000;
+let m3u8LoadTimer = null;
 const INITIAL_PLAYBACK_RECOVERY_DELAY_MS = 1500;
 let initialPlaybackRecoveryTimer = null;
 let initialPlaybackRecovery = null;
@@ -463,17 +482,28 @@ async function recoverInitialPlayback() {
     return;
   }
 
-  // 初回だけ、ユーザーが行う画質変更と同じ経路を一度通す。
-  const fallbackQuality = availableQualities.value
-    .filter(
-      (quality) =>
-        quality !== context.quality &&
-        qualityHeight(quality) > 0 &&
-        qualityHeight(quality) <= 1080 &&
-        !isAudioOnlyEntry(sources.value[quality])
-    )
-    .sort((a, b) => qualityHeight(b) - qualityHeight(a))[0] ||
-    (qualityHeight(context.quality) <= 1080 ? context.quality : "");
+  // Apple端末の場合、まず現在の画質内の残りの単一URLを順々に試す
+  if (isAppleDevice()) {
+    const triedNext = tryNextAppleSource();
+    if (triedNext) {
+      return;
+    }
+  }
+
+  // m3u8を使用中で再生できない場合は非m3u8へフォールバック
+  if (isCurrentlyUsingM3u8()) {
+    handleM3u8LoadTimeout();
+    return;
+  }
+
+  // 再生可能な画質を検索（空URLの画質は除外される）
+  const fallbackQuality = selectBestPlayableQuality(
+    sources.value,
+    availableQualities.value.filter((q) => q !== context.quality),
+    "",
+    { useM3u8: useM3u8Playback() }
+  );
+
   if (!fallbackQuality) {
     clearInitialPlaybackRecovery();
     return;
@@ -488,6 +518,8 @@ async function recoverInitialPlayback() {
     clearInitialPlaybackRecovery();
     return;
   }
+  appleFallbackActive.value = false;
+  appleSourceIndex.value = 0;
   playerRenderKey.value += 1;
   initialPlaybackRecovery.quality = fallbackQuality;
   selectedQuality.value = fallbackQuality;
@@ -633,6 +665,7 @@ onBeforeUnmount(() => {
   streamStatusTimer = null;
   statusClockTimer = null;
   clearInitialPlaybackRecovery();
+  clearM3u8LoadTimeout();
   destroyHls();
   revokeSubtitleTracks(subtitleTracks.value);
   try { cancelAutoplay(); } catch (e) {}
@@ -652,15 +685,109 @@ onBeforeUnmount(() => {
 
 // 再生時に m3u8 を使うべきか（Apple はそのまま、非 Apple は nativeHlsSupported を確認）
 function isAppleDevice() {
-  const ua = navigator.userAgent;
-  return /iPhone|iPad|Macintosh/.test(ua);
+  return isAppleDeviceCheck();
 }
 function useM3u8Playback() {
   try {
+    if (m3u8PlaybackDisabled.value) return false;
     if (!hasM3u8.value) return false;
     if (isAppleDevice()) return true;
     return nativeHlsSupported.value === true || Boolean(HlsConstructor?.isSupported());
   } catch (e) { return false; }
+}
+
+function clearM3u8LoadTimeout() {
+  if (m3u8LoadTimer !== null) {
+    window.clearTimeout(m3u8LoadTimer);
+    m3u8LoadTimer = null;
+  }
+}
+
+function isCurrentlyUsingM3u8() {
+  if (m3u8PlaybackDisabled.value) return false;
+  const sel = selectedQuality.value;
+  const entry = sources.value[sel];
+  if (!entry) return false;
+  if (isM3u8Source(entry)) return true;
+  if (Array.isArray(entry.sources) && entry.sources.some(isM3u8Source)) {
+    if (useM3u8Playback()) {
+      const activeList = getSingleStreamSources(entry);
+      return activeList.some(isM3u8Source);
+    }
+  }
+  if (entry.video?.sources?.some(isM3u8Source) || isM3u8Source(entry.video)) {
+    return true;
+  }
+  return false;
+}
+
+function startM3u8LoadTimeout() {
+  clearM3u8LoadTimeout();
+  if (m3u8PlaybackDisabled.value || !isCurrentlyUsingM3u8()) return;
+
+  m3u8LoadTimer = window.setTimeout(() => {
+    handleM3u8LoadTimeout();
+  }, M3U8_LOAD_TIMEOUT_MS);
+}
+
+async function handleM3u8LoadTimeout() {
+  m3u8LoadTimer = null;
+  // 既に動画が正常に再生中であればフォールバック不要
+  if (
+    videoRef.value &&
+    !videoRef.value.paused &&
+    videoRef.value.currentTime > 0 &&
+    !playerBuffering.value &&
+    playerReady.value
+  ) {
+    return;
+  }
+  if (m3u8PlaybackDisabled.value) return;
+
+  console.warn("m3u8 load timeout (10s) exceeded or m3u8 failed. Falling back to non-m3u8 sources for all browsers.");
+  m3u8PlaybackDisabled.value = true;
+  destroyHls();
+
+  let prevTime = 0;
+  try {
+    if (videoRef.value) prevTime = videoRef.value.currentTime || 0;
+  } catch (e) {}
+
+  // 非m3u8で再生可能な最適な画質を選択する（空URLの画質は除外される）
+  const bestQuality = selectBestPlayableQuality(
+    sources.value,
+    availableQualities.value,
+    selectedQuality.value,
+    { useM3u8: false }
+  );
+
+  appleFallbackActive.value = false;
+  appleSourceIndex.value = 0;
+  playerReady.value = false;
+  playerBuffering.value = false;
+
+  if (bestQuality && bestQuality !== selectedQuality.value) {
+    selectedQuality.value = bestQuality;
+    return;
+  }
+
+  // 同じ画質内で非m3u8ソースに切り替える場合
+  playerRenderKey.value += 1;
+  await nextTick();
+  const entry = sources.value[selectedQuality.value];
+  if (videoRef.value && entry) {
+    if (isSingleStreamEntry(entry)) {
+      applyVideoSources(videoRef.value, getSingleStreamSources(entry));
+    } else if (entry.video) {
+      applyVideoSources(videoRef.value, getVideoSourcesForEntry(entry));
+    }
+    try {
+      if (prevTime > 0) videoRef.value.currentTime = prevTime;
+    } catch (e) {}
+    if (autoplayEnabled.value) {
+      videoRef.value.play().catch(() => {});
+    }
+  }
 }
 
 function isSingleStreamEntry(entry) {
@@ -671,14 +798,100 @@ function isSingleStreamEntry(entry) {
 }
 
 function getSingleStreamSources(entry) {
-  try {
-    if (!entry) return [];
-    const rawList = Array.isArray(entry.sources) ? entry.sources : (entry.url ? [{ url: entry.url, mimeType: entry.mimeType, isM3u8: !!entry.isM3u8 }] : []);
-    if (rawList.length === 0) return [];
-    if (useM3u8Playback()) return rawList;
-    return preferH264First(rawList.filter((s) => !s.isM3u8));
-  } catch (e) {
-    return [];
+  return getSingleStreamSourcesList(entry, {
+    isApple: isAppleDevice(),
+    fallbackActive: appleFallbackActive.value,
+    sourceIndex: appleSourceIndex.value,
+    useM3u8: useM3u8Playback(),
+  });
+}
+
+function getCandidateSourcesForCurrentQuality() {
+  const sel = selectedQuality.value;
+  const entry = sources.value[sel];
+  if (!entry) return [];
+  if (isSingleStreamEntry(entry)) {
+    return getSingleStreamSourcesList(entry, {
+      isApple: false,
+      fallbackActive: false,
+      useM3u8: useM3u8Playback(),
+    });
+  } else if (entry.video) {
+    return getVideoSourcesForEntryList(entry, {
+      isApple: false,
+      fallbackActive: false,
+    });
+  }
+  return [];
+}
+
+function tryNextAppleSource() {
+  if (!isAppleDevice()) return false;
+  const candidateSources = getCandidateSourcesForCurrentQuality();
+  if (!candidateSources || candidateSources.length <= 1) {
+    return false;
+  }
+
+  const now = Date.now();
+  if (now - lastAppleFallbackAttemptTime < 150) {
+    return true;
+  }
+  lastAppleFallbackAttemptTime = now;
+
+  if (!appleFallbackActive.value) {
+    appleFallbackActive.value = true;
+    appleSourceIndex.value = 1 < candidateSources.length ? 1 : 0;
+  } else {
+    appleSourceIndex.value += 1;
+  }
+
+  if (appleSourceIndex.value < candidateSources.length) {
+    const entry = sources.value[selectedQuality.value];
+    if (entry?.video) {
+      entry.video._appleFallbackActive = true;
+      entry.video._appleSourceIndex = appleSourceIndex.value;
+    }
+    playerReady.value = false;
+    playerBuffering.value = false;
+    playerRenderKey.value += 1;
+    scheduleInitialPlaybackRecovery();
+
+    const currentSource = candidateSources[appleSourceIndex.value];
+    nextTick(() => {
+      if (!videoRef.value || !currentSource) return;
+      applyVideoSources(videoRef.value, [currentSource]);
+      if (autoplayEnabled.value) {
+        try {
+          videoRef.value.play().catch(() => {});
+        } catch (e) {}
+      }
+    });
+    return true;
+  }
+
+  return false;
+}
+
+function handleVideoError() {
+  if (isAppleDevice()) {
+    const handled = tryNextAppleSource();
+    if (handled) return;
+  }
+  if (isCurrentlyUsingM3u8()) {
+    handleM3u8LoadTimeout();
+    return;
+  }
+  scheduleInitialPlaybackRecovery();
+}
+
+function handleSourceError() {
+  if (isAppleDevice()) {
+    const handled = tryNextAppleSource();
+    if (handled) return;
+  }
+  if (isCurrentlyUsingM3u8()) {
+    handleM3u8LoadTimeout();
+    return;
   }
 }
 
@@ -687,27 +900,40 @@ function applyVideoSources(videoEl, sourcesList) {
   try {
     destroyHls();
     videoEl.querySelectorAll(":scope > source").forEach((source) => source.remove());
-    const hlsSource = sourcesList.find((source) => source?.isM3u8 && source.url);
+    const hlsSource = !m3u8PlaybackDisabled.value && sourcesList.find((source) => source?.isM3u8 && source.url);
     const progressiveSources = sourcesList.filter((source) => !source?.isM3u8);
-    const nativeHls = videoEl.canPlayType("application/vnd.apple.mpegurl") ||
-      videoEl.canPlayType("application/x-mpegURL");
+    const nativeHls = !m3u8PlaybackDisabled.value && (
+      videoEl.canPlayType("application/vnd.apple.mpegurl") ||
+      videoEl.canPlayType("application/x-mpegURL")
+    );
     if (hlsSource && progressiveSources.length === 0 && !nativeHls && HlsConstructor?.isSupported()) {
       hlsInstance = new HlsConstructor();
+      hlsInstance.on(HlsConstructor.Events.ERROR, (event, data) => {
+        if (data && data.fatal) {
+          handleM3u8LoadTimeout();
+        }
+      });
       hlsInstance.loadSource(hlsSource.url);
       hlsInstance.attachMedia(videoEl);
+      startM3u8LoadTimeout();
       return;
     }
-    const playableSources = nativeHls || progressiveSources.length === 0
+    const playableSources = (nativeHls && !m3u8PlaybackDisabled.value) || progressiveSources.length === 0
       ? sourcesList
       : progressiveSources;
     for (const s of playableSources) {
       if (!s?.url) continue;
+      if (m3u8PlaybackDisabled.value && s.isM3u8) continue;
       const sourceEl = document.createElement("source");
       sourceEl.src = s.url;
       if (s.mimeType) sourceEl.type = s.mimeType;
+      sourceEl.addEventListener("error", handleSourceError);
       videoEl.appendChild(sourceEl);
     }
     videoEl.load();
+    if (isCurrentlyUsingM3u8()) {
+      startM3u8LoadTimeout();
+    }
   } catch (e) {}
 }
 
@@ -736,14 +962,11 @@ function isAudioOnlyEntry(entry) {
 }
 
 function getVideoSourcesForEntry(entry) {
-  try {
-    const sourcesList = entry?.video?.sources;
-    if (Array.isArray(sourcesList) && sourcesList.length > 0) return preferH264First(sourcesList);
-    if (entry?.video?.url) return preferH264First([{ url: entry.video.url, mimeType: entry.video.mimeType }]);
-    return [];
-  } catch (e) {
-    return [];
-  }
+  return getVideoSourcesForEntryList(entry, {
+    isApple: isAppleDevice(),
+    fallbackActive: appleFallbackActive.value,
+    sourceIndex: appleSourceIndex.value,
+  });
 }
 
 function preferH264First(list) {
@@ -844,6 +1067,9 @@ function detachBufferListeners() {
 function onWaiting() {
   _buffering = true;
   attachBufferListeners();
+  if (isCurrentlyUsingM3u8()) {
+    startM3u8LoadTimeout();
+  }
 }
 
 function onProgress() {
@@ -853,6 +1079,7 @@ function onProgress() {
 
 function onPlaying() {
   _buffering = false;
+  clearM3u8LoadTimeout();
   detachBufferListeners();
 }
 
@@ -1054,6 +1281,9 @@ function reloadSrc() {
 function checkPlayback() {
   if (videoRef.value) {
     videoRef.value.play().catch(() => {
+      if (isAppleDevice() && tryNextAppleSource()) {
+        return;
+      }
       reloadSrc();
     });
   }
@@ -1137,6 +1367,9 @@ function applyHlsSetup(prevTime = 0) {
 watch(selectedQuality, (newQuality) => {
   playerReady.value = false;
   playerBuffering.value = false;
+  appleFallbackActive.value = false;
+  appleSourceIndex.value = 0;
+  clearM3u8LoadTimeout();
   if (
     initialPlaybackRecovery &&
     !initialPlaybackRecoveryRunning &&
@@ -1149,6 +1382,10 @@ watch(selectedQuality, (newQuality) => {
   const entry = sources.value[sel];
 
   if (!entry) return;
+
+  if (isCurrentlyUsingM3u8()) {
+    startM3u8LoadTimeout();
+  }
 
   // If entry has single-stream URL and device can use it
   if (isSingleStreamEntry(entry)) {
@@ -1296,7 +1533,11 @@ function applyRepeatAndAutoplay() {
 async function fetchStreamUrl(id, forceRefresh = false) {
   const sequence = ++streamRequestSequence;
   clearInitialPlaybackRecovery();
+  clearM3u8LoadTimeout();
+  m3u8PlaybackDisabled.value = false;
   destroyHls();
+  appleFallbackActive.value = false;
+  appleSourceIndex.value = 0;
   error.value = "";
   errorCode.value = "";
   errorExpiresAt.value = 0;
@@ -1362,18 +1603,19 @@ async function fetchStreamUrl(id, forceRefresh = false) {
     const preferred = (() => {
       try { return loadPreferredQuality(); } catch (e) { return "auto"; }
     })();
-    const resolvePreferred = (pref, list) => {
-      if (!pref || pref === "auto") return "";
-      if (list.includes(pref)) return pref;
-      const alt = `${pref}_2`;
-      if (list.includes(alt)) return alt;
-      return "";
-    };
-    const preferredResolved = resolvePreferred(preferred, availableQualities.value);
-    selectedQuality.value = preferredResolved || parsed.defaultQuality || availableQualities.value[0] || "";
+    const initialQuality = selectBestPlayableQuality(
+      sources.value,
+      availableQualities.value,
+      preferred,
+      { useM3u8: useM3u8Playback() }
+    );
+    selectedQuality.value = initialQuality || parsed.defaultQuality || availableQualities.value[0] || "";
     hasM3u8.value = !!parsed.hasM3u8;
     playerRenderKey.value += 1;
     beginInitialPlaybackRecovery(sequence, id, selectedQuality.value);
+    if (isCurrentlyUsingM3u8()) {
+      startM3u8LoadTimeout();
+    }
 
     // 自動再生が有効なら候補IDだけ確認する（プリフェッチは行わない）
     try {
@@ -1416,11 +1658,15 @@ function markPlayerReady(event) {
   ) {
     clearInitialPlaybackRecovery();
   }
+  if (videoRef.value && videoRef.value.readyState >= 3) {
+    clearM3u8LoadTimeout();
+  }
 }
 
 function markPlayerPlaying(event) {
   playerReady.value = true;
   playerBuffering.value = false;
+  clearM3u8LoadTimeout();
   if (event?.currentTarget && isPrimaryMediaElement(event.currentTarget)) {
     clearInitialPlaybackRecovery();
   }
@@ -1428,6 +1674,9 @@ function markPlayerPlaying(event) {
 
 function markPlayerBuffering() {
   if (playerReady.value) playerBuffering.value = true;
+  if (isCurrentlyUsingM3u8()) {
+    startM3u8LoadTimeout();
+  }
 }
 
 watch(
