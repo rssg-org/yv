@@ -175,6 +175,7 @@ test("stream normalization supports muxed playback, HLS fallback, and VTT captio
   assert.deepEqual(captions.map((track) => track.srclang), ["ja", "en"]);
 });
 
+
 test("manual captions take precedence while all other automatic languages remain available", () => {
   const captions = extractSubtitleTracks({
     subtitles: {

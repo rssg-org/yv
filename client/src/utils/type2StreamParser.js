@@ -1,10 +1,6 @@
 // Utilities for parsing /api/<id>/type2 responses into the shape expected by StreamType2.vue
 import { isMseHlsSupported } from "@/utils/hlsLoader";
 
-/**
- * レスポンスのフォーマットオブジェクトからコンテナ、圧縮方式、コーデックを抽出し、
- * canPlayTypeなどで検証可能な完全な MIME タイプ文字列を生成します。
- */
 function extractMimeTypeAndCodecs(f) {
   try {
     if (f.isM3u8) return "application/x-mpegURL";
@@ -41,12 +37,13 @@ function extractMimeTypeAndCodecs(f) {
  * フォーマットのサポートレベル ('probably', 'maybe', または '') を返します。
  * 偽陽性を防ぐため、MediaSource.isTypeSupported を優先的に使用します。
  */
-function getSupportLevel(f) {
+function getSupportLevel(f, { allowM3u8 = false } = {}) {
   try {
     if (f.isM3u8) {
       const media = document.createElement("video");
       return media.canPlayType("application/vnd.apple.mpegurl") ||
         media.canPlayType("application/x-mpegURL") ||
+        (allowM3u8 ? "probably" : "") ||
         (isMseHlsSupported() ? "probably" : "");
     }
 
@@ -81,7 +78,7 @@ function getSupportLevel(f) {
 
 function resolutionToQualityLabel(resolution) {
   try {
-    if (!resolution || typeof resolution !== "string") return "unknown";
+    if (!resolution || typeof resolution !== "string") return "";
     const trimmed = resolution.trim();
     if (trimmed === "audio only") return "audio";
 
@@ -94,7 +91,7 @@ function resolutionToQualityLabel(resolution) {
     if (/^\d+p$/.test(trimmed)) return trimmed;
     return trimmed;
   } catch (e) {
-    return "unknown";
+    return "";
   }
 }
 
@@ -198,14 +195,23 @@ function sortFormatsByPreference(formats, preferExtOrder = ["mp4", "webm"]) {
   }
 }
 
-function parseFormatsArray(formats) {
+function parseFormatsArray(formats, options = {}) {
   try {
     if (!Array.isArray(formats)) return null;
+
+    // 通常の再生可否判定で除外された muxed も、最終フォールバック用に保持する。
+    const muxedFallbackSources = formats
+      .filter((f) => f?.url && f.hasVideo && f.hasAudio)
+      .map((f) => ({
+        url: f.url,
+        mimeType: extractMimeTypeAndCodecs(f),
+        isM3u8: !!f.isM3u8,
+      }));
 
     // 本当に再生可能なフォーマットのみに絞り込む
     formats = formats.reduce((acc, f) => {
       try {
-        const level = getSupportLevel(f);
+        const level = getSupportLevel(f, options);
         if (level === 'probably' || level === 'maybe') {
           f._supportLevel = level;
           acc.push(f);
@@ -219,6 +225,7 @@ function parseFormatsArray(formats) {
       try {
         if (!f || !f.url) continue;
         const quality = resolutionToQualityLabel(f.resolution);
+        if (!quality) continue;
         if (!byQuality[quality]) byQuality[quality] = [];
         byQuality[quality].push(f);
       } catch (e) {
@@ -322,6 +329,7 @@ function parseFormatsArray(formats) {
       qualityLabels,
       defaultQuality,
       hasM3u8,
+      muxedFallbackSources,
     };
   } catch (e) {}
   return {
@@ -330,10 +338,11 @@ function parseFormatsArray(formats) {
     qualityLabels: {},
     defaultQuality: "",
     hasM3u8: false,
+    muxedFallbackSources: [],
   };
 }
 
-export function parseStream2Response(data) {
+export function parseStream2Response(data, options = {}) {
   try {
     const hasFormats = Array.isArray(data?.formats);
     if (!data || typeof data !== "object") {
@@ -346,7 +355,7 @@ export function parseStream2Response(data) {
       };
     }
 
-    if (Array.isArray(data.formats)) return parseFormatsArray(data.formats);
+    if (Array.isArray(data.formats)) return parseFormatsArray(data.formats, options);
 
     // 旧形式のレスポンス
     const srcs = {};

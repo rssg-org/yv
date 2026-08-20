@@ -617,8 +617,9 @@ export function stream(videoId, options = {}) {
 
   let pending = streamRequests.get(cacheKey);
   if (!pending) {
+    const controller = new AbortController();
     pending = getJson(`/api/stream/${pathSegment(id, "videoId")}`, {
-      ...requestOptions({ ...options, signal: undefined }),
+      ...requestOptions({ ...options, signal: controller.signal }),
       query: { origin: origin || undefined },
     })
       .then((data) => {
@@ -626,12 +627,26 @@ export function stream(videoId, options = {}) {
         return data;
       })
       .finally(() => {
-        streamRequests.delete(cacheKey);
+        if (streamRequests.get(cacheKey) === pending) {
+          streamRequests.delete(cacheKey);
+        }
       });
+    pending.cancel = () => controller.abort();
     streamRequests.set(cacheKey, pending);
   }
 
   return withSignal(pending, options.signal);
+}
+
+export function cancelStreamRequest(videoId, origin = "") {
+  const id = requireString(videoId, "videoId");
+  const normalizedOrigin = origin === "" ? "" : requireString(origin, "origin");
+  const cacheKey = `${id}\u0000${normalizedOrigin}`;
+  const pending = streamRequests.get(cacheKey);
+  if (!pending) return false;
+  streamRequests.delete(cacheKey);
+  pending.cancel?.();
+  return true;
 }
 
 export function streamStatus(options = {}) {

@@ -1,13 +1,13 @@
 <template>
   <div class="video-wrapper">
       <StreamType1 v-if="currentStreamType === '1'" :videoId="videoId" :videoTitle="videoTitle" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
-      <StreamType2 v-else-if="currentStreamType === '2'" :videoId="videoId" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
+      <StreamType2 v-else-if="currentStreamType === '2'" :videoId="videoId" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" @loading-timeout-reload="reloadType2ViaType1" />
       <StreamType3 v-else-if="currentStreamType === '3'" :videoId="videoId" @ended="onEnded" />
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from "vue";
+import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import StreamType1 from "./StreamType1.vue";
 import StreamType2 from "./StreamType2.vue";
 import StreamType3 from "./StreamType3.vue";
@@ -20,6 +20,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["ended", "play-autoplay-candidate", "autoplay-no-suitable-video"]);
+let type2ReloadTimer = null;
+let type2ReloadInProgress = false;
 
 function getDefaultStreamType() {
   try {
@@ -64,6 +66,26 @@ function onPlayAutoplayCandidate({ id }) {
 function onAutoplayNoSuitableVideo() {
   emit('autoplay-no-suitable-video');
 }
+
+function reloadType2ViaType1() {
+  if (currentStreamType.value !== "2" || type2ReloadInProgress) return;
+  type2ReloadInProgress = true;
+  currentStreamType.value = "1";
+  type2ReloadTimer = window.setTimeout(() => {
+    type2ReloadTimer = null;
+    if (currentStreamType.value === "1") {
+      currentStreamType.value = "2";
+    }
+    type2ReloadInProgress = false;
+  }, 200);
+}
+
+onBeforeUnmount(() => {
+  if (type2ReloadTimer !== null) {
+    window.clearTimeout(type2ReloadTimer);
+    type2ReloadTimer = null;
+  }
+});
 
 onMounted(() => {
   // マウント時に streamType prop が empty な場合、localStorage から読み込む
