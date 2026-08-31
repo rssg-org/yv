@@ -1,41 +1,6 @@
 <h1>GAS Webアプリ デプロイ手順</h1>
 *クライアントのみの場合静的ウェブサイトを配信できる物ならなんでもOKです
-<h2>コード</h2>
-<pre><code>function doGet() {
-  const text = UrlFetchApp.fetch(
-    'https://raw.githubusercontent.com/ajgpw/youtube/refs/heads/main/index.html.txt'
-  ).getContentText();
-  return HtmlService.createHtmlOutput(text)
-                    .setTitle('しあtube')
-                    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-function siatubeApiGet(pathAndQuery) {
-  const value = String(pathAndQuery || '');
-  const valid = value === '/api' || value.startsWith('/api/') || value.startsWith('/api?');
-  if (!valid) throw new Error('Invalid API path');
-
-  const directUrl = 'https://siatube.com' + value;
-  const commonOptions = {
-    headers: { Accept: 'application/json' },
-    followRedirects: true,
-    muteHttpExceptions: true
-  };
-  const response = directUrl.length &lt;= 1900
-    ? UrlFetchApp.fetch(directUrl, commonOptions)
-    : UrlFetchApp.fetch('https://siawaseok.duckdns.org/api/bridge', {
-        ...commonOptions,
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify({ pathAndQuery: value })
-      });
-  return {
-    status: response.getResponseCode(),
-    body: response.getContentText()
-  };
-}
-</code></pre>
-
+リポジトリ内の成果物を置くかhttps://github.com/ajgpw/youtube/blob/main/siatube-full.html.txtを配信(自動でアプデ反映されるからこっちのほうがおすすめ)してください
 <h2>手順</h2>
 <ol>
   <li>Google Apps Script のエディタを開き、既存のコードを上書きする形で上記のコードを貼り付ける
@@ -43,7 +8,7 @@ function siatubeApiGet(pathAndQuery) {
       <li>デプロイしても真っ白な画面になってしまう場合は<br>
       <code>https://raw.githubusercontent.com/ajgpw/youtube/refs/heads/main/index.html.txt</code><br>
       を<br>
-      <code>https://raw.githubusercontent.com/ajgpw/ajgpw.github.io/refs/heads/main/%E3%81%97%E3%81%82tube/index.html</code><br>
+      <code>https://raw.githubusercontent.com/ajgpw/youtube/refs/heads/main/siatube-full.html.txt</code><br>
       に置き換えて再度デプロイしてください</li>
     </ul>
   </li>
