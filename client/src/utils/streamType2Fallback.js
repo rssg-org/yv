@@ -26,6 +26,91 @@ export function isM3u8Source(source) {
 }
 
 /**
+ * media要素が現在選択しているソースを優先して、HLS再生中か判定する。
+ * currentSrcがまだ決まっていないロード開始直後だけ、先頭候補を使用する。
+ */
+export function isM3u8PlaybackActive(mediaElement, candidateSources = []) {
+  const currentSrc = mediaElement?.currentSrc || mediaElement?.src || "";
+  if (currentSrc) {
+    const matchingSource = candidateSources.find(
+      (source) => source?.url === currentSrc,
+    );
+    return isM3u8Source(matchingSource || { url: currentSrc });
+  }
+
+  const firstCandidate = candidateSources.find((source) => source?.url);
+  return isM3u8Source(firstCandidate);
+}
+
+/**
+ * HLSの失敗監視は、実際に再生が要求された後だけ開始する。
+ * durationが00:00の遅延ロード型HLSを、待機中に失敗扱いしないための判定。
+ */
+export function shouldMonitorM3u8Playback({ attempted, disabled, active }) {
+  return Boolean(attempted && !disabled && active);
+}
+
+/**
+ * ネイティブHLSが利用可能ならHLSだけをvideo要素へ渡し、ブラウザ側で
+ * progressiveへ先回りして切り替わらないようにする。
+ */
+export function selectNativeHlsSources(sources, { useM3u8 = true } = {}) {
+  if (!Array.isArray(sources)) return [];
+  const hlsSources = sources.filter(isM3u8Source);
+  if (useM3u8 && hlsSources.length > 0) return hlsSources;
+  if (!useM3u8) return sources.filter((source) => !isM3u8Source(source));
+  return sources;
+}
+
+export function getMediaSourceMimeType(source) {
+  if (isM3u8Source(source)) return "application/vnd.apple.mpegurl";
+  return source?.mimeType || undefined;
+}
+
+function getEntryStreamSources(entry) {
+  if (!entry) return [];
+  return [
+    entry,
+    ...(Array.isArray(entry.sources) ? entry.sources : []),
+    entry.video,
+    ...(Array.isArray(entry.video?.sources) ? entry.video.sources : []),
+    entry.audio,
+  ].filter((source) => source?.url);
+}
+
+export function getFirstM3u8Url(entry) {
+  return getEntryStreamSources(entry).find(isM3u8Source)?.url || "";
+}
+
+export function hasNonM3u8Fallback(sources, muxedFallbackSources = []) {
+  const entries = sources && typeof sources === "object"
+    ? Object.values(sources)
+    : [];
+  if (entries.some((entry) => hasPlayableSource(entry, { useM3u8: false }))) {
+    return true;
+  }
+  return muxedFallbackSources.some(
+    (source) => source?.url && !isM3u8Source(source),
+  );
+}
+
+export function getExternalM3u8Url(
+  sources,
+  availableQualities,
+  preferredQuality,
+  muxedFallbackSources = [],
+) {
+  if (hasNonM3u8Fallback(sources, muxedFallbackSources)) return "";
+  const preferredUrl = getFirstM3u8Url(sources?.[preferredQuality]);
+  if (preferredUrl) return preferredUrl;
+  for (const quality of Array.isArray(availableQualities) ? availableQualities : []) {
+    const url = getFirstM3u8Url(sources?.[quality]);
+    if (url) return url;
+  }
+  return "";
+}
+
+/**
  * H.264 コーデックを優先するよう並び替える。
  */
 export function preferH264First(list) {

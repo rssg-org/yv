@@ -22,18 +22,22 @@
     </button>
   </div>
   <div v-else-if="selectedQuality && availableQualities.length > 0" class="video-container">
+    <ExternalHlsPlayer v-if="externalM3u8Url" :url="externalM3u8Url" />
     <!-- single-stream (audio+video) が使える場合 -->
-    <template v-if="isSingleStreamEntry(sources[selectedQuality])">
+    <template v-else-if="isSingleStreamEntry(sources[selectedQuality])">
       <video
         ref="videoRef"
         controls
-        preload="metadata"
+        name="media"
+        :crossorigin="selectedQualityHasM3u8() ? 'anonymous' : undefined"
+        :preload="selectedQualityHasM3u8() ? 'auto' : 'metadata'"
         :autoplay="autoplayEnabled"
         :loop="repeatEnabled"
         :key="`${playerRenderKey}:${selectedQuality}:${appleSourceIndex}:${sources[selectedQuality]?.url || ''}`"
         @canplay="markPlayerReady"
         @loadedmetadata="markPlayerReady"
         @loadeddata="markPlayerReady"
+        @play="handlePlaybackAttempt"
         @playing="markPlayerPlaying"
         @waiting="markPlayerBuffering"
         @error="handleVideoError"
@@ -42,7 +46,7 @@
           v-for="s in getSingleStreamSources(sources[selectedQuality])"
           :key="s.url"
           :src="s.url"
-          :type="s.mimeType || (s.isM3u8 ? 'application/x-mpegURL' : undefined)"
+          :type="getMediaSourceMimeType(s)"
           @error="handleSourceError"
         />
       </video>
@@ -126,10 +130,13 @@
           preload="auto"
           :autoplay="autoplayEnabled"
           controls
+          name="media"
+          :crossorigin="selectedQualityHasM3u8() ? 'anonymous' : undefined"
           :key="`${playerRenderKey}:${separateAvKey}:${selectedQuality}:${appleSourceIndex}:video`"
           @canplay="markPlayerReady"
           @loadedmetadata="markPlayerReady"
           @loadeddata="markPlayerReady"
+          @play="handlePlaybackAttempt"
           @playing="markPlayerPlaying"
           @waiting="markPlayerBuffering"
           @error="handleVideoError"
@@ -138,7 +145,7 @@
             v-for="s in getVideoSourcesForEntry(sources[selectedQuality])"
             :key="s.url"
             :src="s.url"
-            :type="s.mimeType"
+            :type="getMediaSourceMimeType(s)"
             @error="handleSourceError"
           />
         </video>
@@ -210,7 +217,7 @@
       <div v-if="isQualitySwitching" class="block-overlay" aria-hidden="true"></div>
     </template>
     <PlayerLoading
-      v-if="!playbackEstablished && (!playerReady || playerBuffering)"
+      v-if="type2LoadingOverlayVisible"
       overlay
     />
   </div>
@@ -229,19 +236,17 @@
 
 <script setup>
 import { computed, ref, watch, onMounted, nextTick, onBeforeUnmount } from "vue";
+import ExternalHlsPlayer from "@/components/ExternalHlsPlayer.vue";
 import PlayerLoading from "@/components/PlayerLoading.vue";
 import {
   cancelStreamRequest,
   isVideoStreamError,
   stream as fetchStream,
-  streamStatus as fetchStreamStatus,
 } from "@/services/siatubeApi";
 import { setupSyncPlayback } from "@/components/syncPlayback";
+import { createPlaybackController } from "@/composables/playbackController";
+import { useStreamServerStatus } from "@/composables/useStreamServerStatus";
 import { parseStream2Response } from "@/utils/type2StreamParser";
-import {
-  estimateStreamWaitMs,
-  normalizeStreamStatus,
-} from "@/utils/streamStatus";
 import {
   extractSubtitleTracks,
   normalizeStreamFormats,
@@ -263,12 +268,15 @@ import {
 } from "@/utils/subtitleTracks";
 import { claimType2StreamRequestSlot } from "@/utils/type2StreamRequestCooldown";
 import {
+  getExternalM3u8Url,
   isAppleDevice as isAppleDeviceCheck,
+  getMediaSourceMimeType,
+  isM3u8PlaybackActive,
   isM3u8Source,
-  getAllSingleStreamSources,
+  selectNativeHlsSources,
+  shouldMonitorM3u8Playback,
   getSingleStreamSourcesList,
   getVideoSourcesForEntryList,
-  hasPlayableSource,
   selectBestPlayableQuality,
 } from "@/utils/streamType2Fallback";
 
@@ -339,7 +347,8 @@ const appleFallbackActive = ref(false);
 const appleSourceIndex = ref(0);
 let lastAppleFallbackAttemptTime = 0;
 const m3u8PlaybackDisabled = ref(false);
-const M3U8_LOAD_TIMEOUT_MS = 30_000;
+const m3u8PlaybackAttempted = ref(false);
+const M3U8_PLAYBACK_TIMEOUT_MS = 8_000;
 const TYPE2_LOADING_RELOAD_TIMEOUT_MS = 6_000;
 let m3u8LoadTimer = null;
 let type2LoadingReloadTimer = null;
@@ -350,71 +359,29 @@ let initialPlaybackRecoveryRunning = false;
 const repeatEnabled = ref(false);
 const autoplayEnabled = ref(loadAutoplay());
 const loading = ref(false);
-const streamServerStatus = ref(null);
-const streamStatusError = ref(false);
-const streamStatusFetchedAt = ref(0);
-const statusClock = ref(Date.now());
-const STREAM_STATUS_INTERVAL_MS = 60_000;
-const STREAM_PROCESSING_RETRY_INTERVAL_MS = 4_000;
-let streamStatusTimer = null;
-let statusClockTimer = null;
-let streamProcessingRetryTimer = null;
-
-const streamStatusTitle = computed(() => {
-  if (!streamServerStatus.value && !streamStatusError.value) {
-    return "サーバー状況を確認しています…";
-  }
-  if (streamStatusError.value && !streamServerStatus.value) {
-    return "サーバー状況を取得できませんでした";
-  }
-  const count = streamServerStatus.value?.processing?.count || 0;
-  return count === 0
-    ? "サーバーは空いています"
-    : `サーバーで${count}件を処理中です`;
-});
-
-const streamStatusDetail = computed(() => {
-  const ids = streamServerStatus.value?.processing?.ids || [];
-  const ownIndex = ids.indexOf(props.videoId);
-  if (ownIndex < 0) return "";
-  return `この動画を処理中です（${ownIndex + 1}番目）`;
-});
-
-const estimatedWaitText = computed(() => {
-  if (!streamServerStatus.value) return "";
-  const elapsed = Math.max(0, statusClock.value - streamStatusFetchedAt.value);
-  const waitMs = estimateStreamWaitMs(
-    streamServerStatus.value,
-    props.videoId,
-    elapsed,
-  );
-  if (waitMs <= 0) return "まもなく完了予定";
-  return `約${Math.max(1, Math.ceil(waitMs / 1000))}秒`;
-});
-
-async function updateStreamServerStatus() {
-  try {
-    const data = await fetchStreamStatus({ retries: 0, timeout: 10_000 });
-    streamServerStatus.value = normalizeStreamStatus(data);
-    streamStatusFetchedAt.value = Date.now();
-    statusClock.value = streamStatusFetchedAt.value;
-    streamStatusError.value = false;
-  } catch {
-    streamStatusError.value = true;
-  }
-}
-
-function retryProcessingStream() {
-  if (!loading.value || !props.videoId || error.value || playbackEstablished.value) {
-    return;
-  }
-  cancelStreamRequest(props.videoId, "siatube");
-  fetchStreamUrl(props.videoId, true);
-}
 const playerReady = ref(false);
 const playerBuffering = ref(false);
 const playbackEstablished = ref(false);
+const { estimatedWaitText, statusClock, streamStatusDetail, streamStatusTitle } =
+  useStreamServerStatus(
+    () => props.videoId,
+    {
+      shouldRetry: () => Boolean(
+        loading.value &&
+        props.videoId &&
+        !error.value &&
+        !playbackEstablished.value
+      ),
+      onRetry: () => {
+        cancelStreamRequest(props.videoId, "siatube");
+        fetchStreamUrl(props.videoId, true);
+      },
+    },
+  );
 const muxedFallbackSources = ref([]);
+const externalM3u8Url = computed(() => getExternalM3u8Url(
+  sources.value, availableQualities.value, selectedQuality.value, muxedFallbackSources.value,
+));
 let setupFailureCount = 0;
 let muxedFallbackAttempted = false;
 let muxedFallbackSelectionPending = false;
@@ -422,20 +389,14 @@ const type2LoadingOverlayVisible = computed(() => Boolean(
   selectedQuality.value &&
   availableQualities.value.length > 0 &&
   !playbackEstablished.value &&
+  !selectedQualityHasM3u8() &&
   (!playerReady.value || playerBuffering.value)
 ));
 const isQualitySwitching = ref(false);
 const showUnmutePrompt = ref(false);
 const settingsVisible = ref(true);
 const USER_GESTURE_KEY = 'yt_user_gesture_v1';
-const AUTOPLAY_DELAY_MS = 3000;
-const LOOP_BUFFER_SECONDS = 5; // バッファの為の待ち時間
 const SINGLE_QUALITY_PLACEHOLDER = "111p";
-let _autoplayTimer = null;
-let _buffering = false;
-let _loopResumeTimer = null;
-let _loopBufferListenersAttached = false;
-const BUFFER_RESUME_SECONDS = 4;
 let _onEndedAttached = false;
 let streamRequestSequence = 0;
 let playbackConfirmationTimer = null;
@@ -456,12 +417,15 @@ function clearType2LoadingReloadTimer() {
 
 function scheduleType2LoadingReload(sequence) {
   clearType2LoadingReloadTimer();
+  // HLSは専用のロード監視に任せる。通常ストリーム向けの短い再マウントを
+  // 適用すると、HLSの初期バッファリング中にプレイヤーが破棄されてしまう。
+  if (selectedQualityHasM3u8()) return;
   type2LoadingReloadTimer = window.setTimeout(() => {
     type2LoadingReloadTimer = null;
     if (sequence !== streamRequestSequence || error.value || playbackEstablished.value) {
       return;
     }
-    if (type2LoadingOverlayVisible.value) {
+    if (type2LoadingOverlayVisible.value && !selectedQualityHasM3u8()) {
       emit("loading-timeout-reload");
     }
   }, TYPE2_LOADING_RELOAD_TIMEOUT_MS);
@@ -486,11 +450,6 @@ function hasPlayableDuration(mediaEl = videoRef.value || audioRef.value) {
 function isPrimaryMediaElement(mediaEl) {
   return mediaEl === videoRef.value ||
     (!videoRef.value && mediaEl === audioRef.value);
-}
-
-function qualityHeight(quality) {
-  const match = String(quality || "").match(/^(\d+)p/);
-  return match ? Number(match[1]) : 0;
 }
 
 function scheduleInitialPlaybackRecovery() {
@@ -527,18 +486,17 @@ async function recoverInitialPlayback() {
     return;
   }
 
-  // Apple端末の場合、まず現在の画質内の残りの単一URLを順々に試す
-  if (isAppleDevice()) {
-    const triedNext = tryNextAppleSource();
-    if (triedNext) {
-      return;
-    }
+  // HLSは起動に時間がかかるため、Apple端末のURL切替よりも先に除外する。
+  if (isCurrentlyUsingM3u8()) {
+    // 1.5秒の初期復旧では失敗扱いにせず、再生操作後の専用タイムアウトに任せる。
+    clearInitialPlaybackRecovery();
+    return;
   }
 
-  // m3u8を使用中で再生できない場合は非m3u8へフォールバック
-  if (isCurrentlyUsingM3u8()) {
-    handleM3u8LoadTimeout();
-    return;
+  // Apple端末の場合、現在の画質内の残りの単一URLを順々に試す
+  if (isAppleDevice()) {
+    const triedNext = tryNextAppleSource();
+    if (triedNext) return;
   }
 
   // 再生可能な画質を検索（空URLの画質は除外される）
@@ -663,19 +621,6 @@ const nativeHlsSupported = ref(false);
 const hasM3u8 = ref(false);
 
 onMounted(() => {
-  void updateStreamServerStatus();
-  streamStatusTimer = window.setInterval(
-    updateStreamServerStatus,
-    STREAM_STATUS_INTERVAL_MS,
-  );
-  streamProcessingRetryTimer = window.setInterval(
-    retryProcessingStream,
-    STREAM_PROCESSING_RETRY_INTERVAL_MS,
-  );
-  statusClockTimer = window.setInterval(() => {
-    statusClock.value = Date.now();
-  }, 1_000);
-
   // ブラウザがネイティブに m3u8 を扱えるか判定
   try {
     const tv = document.createElement('video');
@@ -709,14 +654,6 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (streamStatusTimer !== null) window.clearInterval(streamStatusTimer);
-  if (statusClockTimer !== null) window.clearInterval(statusClockTimer);
-  streamStatusTimer = null;
-  if (streamProcessingRetryTimer !== null) {
-    window.clearInterval(streamProcessingRetryTimer);
-  }
-  streamProcessingRetryTimer = null;
-  statusClockTimer = null;
   clearInitialPlaybackRecovery();
   clearM3u8LoadTimeout();
   clearPlaybackConfirmationTimer();
@@ -761,44 +698,44 @@ function isCurrentlyUsingM3u8() {
   const sel = selectedQuality.value;
   const entry = sources.value[sel];
   if (!entry) return false;
-  if (isM3u8Source(entry)) return true;
-  if (Array.isArray(entry.sources) && entry.sources.some(isM3u8Source)) {
-    if (useM3u8Playback()) {
-      const activeList = getSingleStreamSources(entry);
-      return activeList.some(isM3u8Source);
-    }
-  }
-  if (entry.video?.sources?.some(isM3u8Source) || isM3u8Source(entry.video)) {
-    return true;
-  }
-  return false;
+  const candidateSources = entry.url || Array.isArray(entry.sources)
+    ? getSingleStreamSources(entry)
+    : getVideoSourcesForEntry(entry);
+  return isM3u8PlaybackActive(videoRef.value, candidateSources);
+}
+
+function selectedQualityHasM3u8() {
+  if (!useM3u8Playback()) return false;
+  const entry = sources.value[selectedQuality.value];
+  if (!entry) return false;
+  const candidateSources = entry.url || Array.isArray(entry.sources)
+    ? getSingleStreamSources(entry)
+    : getVideoSourcesForEntry(entry);
+  return candidateSources.some(isM3u8Source);
 }
 
 function startM3u8LoadTimeout() {
-  clearM3u8LoadTimeout();
-  if (m3u8PlaybackDisabled.value || !isCurrentlyUsingM3u8()) return;
+  if (m3u8LoadTimer !== null) return;
+  if (!shouldMonitorM3u8Playback({
+    attempted: m3u8PlaybackAttempted.value,
+    disabled: m3u8PlaybackDisabled.value,
+    active: isCurrentlyUsingM3u8(),
+  })) return;
 
   m3u8LoadTimer = window.setTimeout(() => {
     handleM3u8LoadTimeout();
-  }, M3U8_LOAD_TIMEOUT_MS);
+  }, M3U8_PLAYBACK_TIMEOUT_MS);
 }
 
-async function handleM3u8LoadTimeout(skipFailureRecord = false) {
+async function handleM3u8LoadTimeout() {
   m3u8LoadTimer = null;
-  if (!skipFailureRecord && recordSetupFailure()) return;
-  // 既に動画が正常に再生中であればフォールバック不要
-  if (
-    videoRef.value &&
-    !videoRef.value.paused &&
-    videoRef.value.currentTime > 0 &&
-    !playerBuffering.value &&
-    playerReady.value
-  ) {
-    return;
-  }
+  if (!m3u8PlaybackAttempted.value) return;
+  // durationやcanplayでは判断しない。ライブを含め、playing発生だけを成功とする。
+  if (playbackEstablished.value) return;
+  if (recordSetupFailure()) return;
   if (m3u8PlaybackDisabled.value) return;
 
-  console.warn("m3u8 load timeout (30s) exceeded or m3u8 failed. Falling back to non-m3u8 sources.");
+  console.warn("m3u8 playback did not start within 8s. Falling back to non-m3u8 sources.");
   m3u8PlaybackDisabled.value = true;
 
   let prevTime = 0;
@@ -851,12 +788,14 @@ function isSingleStreamEntry(entry) {
 }
 
 function getSingleStreamSources(entry) {
-  return getSingleStreamSourcesList(entry, {
+  const useM3u8 = useM3u8Playback();
+  const candidateSources = getSingleStreamSourcesList(entry, {
     isApple: isAppleDevice(),
     fallbackActive: appleFallbackActive.value,
     sourceIndex: appleSourceIndex.value,
-    useM3u8: useM3u8Playback(),
+    useM3u8,
   });
+  return selectNativeHlsSources(candidateSources, { useM3u8 });
 }
 
 function getCandidateSourcesForCurrentQuality() {
@@ -925,29 +864,35 @@ function tryNextAppleSource() {
   return false;
 }
 
-function handleVideoError() {
-  if (recordSetupFailure()) return;
+function handleVideoError(event) {
+  if (event?.currentTarget && event.currentTarget !== videoRef.value) return;
+  if (isCurrentlyUsingM3u8()) {
+    // source設定直後のmedia errorではHLSを無効化せず、専用タイムアウトまで待つ。
+    startM3u8LoadTimeout();
+    return;
+  }
   if (isAppleDevice()) {
     const handled = tryNextAppleSource();
     if (handled) return;
   }
-  if (isCurrentlyUsingM3u8()) {
-    handleM3u8LoadTimeout(true);
-    return;
-  }
+  if (recordSetupFailure()) return;
   scheduleInitialPlaybackRecovery();
 }
 
-function handleSourceError() {
-  if (recordSetupFailure()) return;
-  if (isAppleDevice()) {
-    const handled = tryNextAppleSource();
-    if (handled) return;
-  }
-  if (isCurrentlyUsingM3u8()) {
-    handleM3u8LoadTimeout(true);
+function handleSourceError(event) {
+  const sourceElement = event?.currentTarget;
+  if (sourceElement?.parentElement && sourceElement.parentElement !== videoRef.value) {
     return;
   }
+  // source要素1件のエラーだけではmedia要素全体の失敗ではない。
+  // ブラウザの候補選択とHLS専用タイムアウトを待つ。
+  if (isM3u8Source({
+    url: sourceElement?.src,
+    mimeType: sourceElement?.type,
+  })) {
+    return;
+  }
+  scheduleInitialPlaybackRecovery();
 }
 
 function recordSetupFailure() {
@@ -998,14 +943,12 @@ function applyVideoSources(videoEl, sourcesList) {
       if (m3u8PlaybackDisabled.value && s.isM3u8) continue;
       const sourceEl = document.createElement("source");
       sourceEl.src = s.url;
-      if (s.mimeType) sourceEl.type = s.mimeType;
+      const sourceType = getMediaSourceMimeType(s);
+      if (sourceType) sourceEl.type = sourceType;
       sourceEl.addEventListener("error", handleSourceError);
       videoEl.appendChild(sourceEl);
     }
     videoEl.load();
-    if (isCurrentlyUsingM3u8()) {
-      startM3u8LoadTimeout();
-    }
   } catch (e) {}
 }
 
@@ -1034,239 +977,37 @@ function isAudioOnlyEntry(entry) {
 }
 
 function getVideoSourcesForEntry(entry) {
-  return getVideoSourcesForEntryList(entry, {
+  const candidateSources = getVideoSourcesForEntryList(entry, {
     isApple: isAppleDevice(),
     fallbackActive: appleFallbackActive.value,
     sourceIndex: appleSourceIndex.value,
   });
+  return selectNativeHlsSources(candidateSources, {
+    useM3u8: useM3u8Playback(),
+  });
 }
 
-function preferH264First(list) {
-  try {
-    if (!Array.isArray(list) || list.length <= 1) return list || [];
-    const isH264 = (s) => {
-      const mt = (s && s.mimeType) ? String(s.mimeType).toLowerCase() : "";
-      const url = (s && s.url) ? String(s.url).toLowerCase() : "";
-      if (mt.includes("video/mp4")) return true;
-      if (mt.includes("avc1") || mt.includes("h264")) return true;
-      if (url.endsWith(".mp4")) return true;
-      if (url.includes("codecs=avc1") || url.includes("codecs%3davc1")) return true;
-      return false;
-    };
-    return list.slice().sort((a, b) => {
-      const aw = isH264(a) ? 1 : 0;
-      const bw = isH264(b) ? 1 : 0;
-      return bw - aw;
-    });
-  } catch (e) {
-    return list || [];
-  }
-}
-
-function getBufferedAhead(el) {
-  try {
-    if (!el || !el.buffered) return 0;
-    const cur = el.currentTime || 0;
-    const buf = el.buffered;
-    for (let i = buf.length - 1; i >= 0; i--) {
-      const start = buf.start(i);
-      const end = buf.end(i);
-      if (end > cur) {
-        if (start <= cur) return end - cur;
-        return end - cur;
-      }
-    }
-    return 0;
-  } catch (e) { return 0; }
-}
-
-function showSettingsBox() {
-  try {
-    settingsVisible.value = true;
-    clearTimeout(showSettingsBox._hideTimer);
-    showSettingsBox._hideTimer = setTimeout(() => { settingsVisible.value = false; }, 3000);
-  } catch (e) {}
-}
-showSettingsBox._hideTimer = null;
-
-function checkAndResumeIfBuffered() {
-  const vAhead = getBufferedAhead(videoRef.value);
-  const aAhead = audioRef.value ? getBufferedAhead(audioRef.value) : vAhead;
-  if (_buffering && vAhead >= BUFFER_RESUME_SECONDS && aAhead >= BUFFER_RESUME_SECONDS) {
-    _buffering = false;
-    try { if (videoRef.value) videoRef.value.play(); } catch (e) {}
-    try { if (audioRef.value) audioRef.value.play(); } catch (e) {}
-    // 再開後にバッファリスナーをデタッチする
-    detachBufferListeners();
-  }
-}
-
-let _bufferListenersAttached = false;
-function attachBufferListeners() {
-  if (_bufferListenersAttached) return;
-  try {
-    if (videoRef.value) {
-      videoRef.value.addEventListener('waiting', onWaiting);
-      videoRef.value.addEventListener('progress', onProgress);
-      videoRef.value.addEventListener('playing', onPlaying);
-    }
-    if (audioRef.value) {
-      audioRef.value.addEventListener('waiting', onWaiting);
-      audioRef.value.addEventListener('progress', onProgress);
-      audioRef.value.addEventListener('playing', onPlaying);
-    }
-    _bufferListenersAttached = true;
-  } catch (e) {}
-}
-
-function detachBufferListeners() {
-  if (!_bufferListenersAttached) return;
-  try {
-    if (videoRef.value) {
-      videoRef.value.removeEventListener('waiting', onWaiting);
-      videoRef.value.removeEventListener('progress', onProgress);
-      videoRef.value.removeEventListener('playing', onPlaying);
-    }
-    if (audioRef.value) {
-      audioRef.value.removeEventListener('waiting', onWaiting);
-      audioRef.value.removeEventListener('progress', onProgress);
-      audioRef.value.removeEventListener('playing', onPlaying);
-    }
-  } catch (e) {}
-  _bufferListenersAttached = false;
-}
-
-function onWaiting() {
-  _buffering = true;
-  attachBufferListeners();
-  if (isCurrentlyUsingM3u8()) {
-    startM3u8LoadTimeout();
-  }
-}
-
-function onProgress() {
-  if (!_buffering) return;
-  checkAndResumeIfBuffered();
-}
-
-function onPlaying() {
-  _buffering = false;
-  clearM3u8LoadTimeout();
-  detachBufferListeners();
-}
-
-function handleUnmuteClick() {
-  try { localStorage.setItem(USER_GESTURE_KEY, '1'); } catch (e) {}
-  showUnmutePrompt.value = false;
-  try {
-    if (videoRef.value) { videoRef.value.muted = false; videoRef.value.play(); }
-    if (audioRef.value) { audioRef.value.muted = false; audioRef.value.play(); }
-  } catch (e) {}
-}
-
-function onFirstUserGesture() {
-  try { localStorage.setItem(USER_GESTURE_KEY, '1'); } catch (e) {}
-  showUnmutePrompt.value = false;
-  try {
-    if (videoRef.value) { videoRef.value.muted = false; videoRef.value.play(); }
-    if (audioRef.value) { audioRef.value.muted = false; audioRef.value.play(); }
-  } catch (e) {}
-}
-
-function scheduleAutoplay() {
-  try { if (_autoplayTimer) { clearTimeout(_autoplayTimer); _autoplayTimer = null; } } catch (e) {}
-  if (!autoplayEnabled.value) return;
-  _autoplayTimer = setTimeout(() => {
-    try {
-      if (videoRef.value) videoRef.value.play();
-      if (audioRef.value) audioRef.value.play();
-    } catch (e) {}
-    _autoplayTimer = null;
-  }, AUTOPLAY_DELAY_MS);
-}
-
-function cancelAutoplay() {
-  try { if (_autoplayTimer) { clearTimeout(_autoplayTimer); _autoplayTimer = null; } } catch (e) {}
-}
-
-// 00:00で再生再開させたい
-function onTimeUpdateLoopHandler() {
-  try {
-    if (!videoRef.value) return;
-    if (repeatEnabled.value) {
-      const cur = videoRef.value.currentTime || 0;
-      if (cur <= 0.12 && videoRef.value.paused) {
-        startLoopResume();
-      }
-    }
-  } catch (e) {}
-}
-
-function startLoopResume() {
-  try { cancelLoopResume(); } catch (e) {}
-  _loopResumeTimer = setTimeout(() => {
-    try { attemptResumeLoop(); } catch (e) {}
-  }, LOOP_BUFFER_SECONDS * 1000);
-}
-
-function cancelLoopResume() {
-  try { if (_loopResumeTimer) { clearTimeout(_loopResumeTimer); _loopResumeTimer = null; } } catch (e) {}
-  detachLoopBufferListeners();
-}
-
-function attemptResumeLoop() {
-  const vAhead = getBufferedAhead(videoRef.value);
-  const aAhead = audioRef.value ? getBufferedAhead(audioRef.value) : vAhead;
-  if (vAhead >= LOOP_BUFFER_SECONDS && aAhead >= LOOP_BUFFER_SECONDS) {
-    try { if (videoRef.value) videoRef.value.play(); } catch (e) {}
-    try { if (audioRef.value) audioRef.value.play(); } catch (e) {}
-    cancelLoopResume();
-  } else {
-    attachLoopBufferListeners();
-  }
-}
-
-function attachLoopBufferListeners() {
-  if (_loopBufferListenersAttached) return;
-  try {
-    if (videoRef.value) {
-      videoRef.value.addEventListener('progress', onLoopBufferProgress);
-      videoRef.value.addEventListener('playing', onLoopBufferProgress);
-    }
-    if (audioRef.value) {
-      audioRef.value.addEventListener('progress', onLoopBufferProgress);
-      audioRef.value.addEventListener('playing', onLoopBufferProgress);
-    }
-    _loopBufferListenersAttached = true;
-  } catch (e) {}
-}
-
-function detachLoopBufferListeners() {
-  if (!_loopBufferListenersAttached) return;
-  try {
-    if (videoRef.value) {
-      videoRef.value.removeEventListener('progress', onLoopBufferProgress);
-      videoRef.value.removeEventListener('playing', onLoopBufferProgress);
-    }
-    if (audioRef.value) {
-      audioRef.value.removeEventListener('progress', onLoopBufferProgress);
-      audioRef.value.removeEventListener('playing', onLoopBufferProgress);
-    }
-  } catch (e) {}
-  _loopBufferListenersAttached = false;
-}
-
-function onLoopBufferProgress() {
-  try {
-    const vAhead = getBufferedAhead(videoRef.value);
-    const aAhead = audioRef.value ? getBufferedAhead(audioRef.value) : vAhead;
-    if (vAhead >= LOOP_BUFFER_SECONDS && aAhead >= LOOP_BUFFER_SECONDS) {
-      try { if (videoRef.value) videoRef.value.play(); } catch (e) {}
-      try { if (audioRef.value) audioRef.value.play(); } catch (e) {}
-      cancelLoopResume();
-    }
-  } catch (e) {}
-}
+const {
+  attachBufferListeners,
+  cancelAutoplay,
+  detachBufferListeners,
+  detachLoopBufferListeners,
+  handleUnmuteClick,
+  onFirstUserGesture,
+  onTimeUpdateLoopHandler,
+  scheduleAutoplay,
+  showSettingsBox,
+} = createPlaybackController({
+  videoRef,
+  audioRef,
+  settingsVisible,
+  showUnmutePrompt,
+  autoplayEnabled,
+  repeatEnabled,
+  isCurrentlyUsingM3u8,
+  startM3u8LoadTimeout,
+  clearM3u8LoadTimeout,
+});
 
 // 繰り返し再生が選ばれた時
 watch(repeatEnabled, (newVal) => {
@@ -1442,6 +1183,7 @@ watch(selectedQuality, (newQuality) => {
     return;
   }
   clearPlaybackConfirmationTimer();
+  m3u8PlaybackAttempted.value = false;
   playbackEstablished.value = false;
   const isMuxedFallbackSelection = muxedFallbackSelectionPending;
   muxedFallbackSelectionPending = false;
@@ -1466,10 +1208,6 @@ watch(selectedQuality, (newQuality) => {
   const entry = sources.value[sel];
 
   if (!entry) return;
-
-  if (isCurrentlyUsingM3u8()) {
-    startM3u8LoadTimeout();
-  }
 
   // If entry has single-stream URL and device can use it
   if (isSingleStreamEntry(entry)) {
@@ -1620,6 +1358,7 @@ async function fetchStreamUrl(id, forceRefresh = false) {
   clearM3u8LoadTimeout();
   clearPlaybackConfirmationTimer();
   m3u8PlaybackDisabled.value = false;
+  m3u8PlaybackAttempted.value = false;
   appleFallbackActive.value = false;
   appleSourceIndex.value = 0;
   error.value = "";
@@ -1688,6 +1427,10 @@ async function fetchStreamUrl(id, forceRefresh = false) {
     sources.value = parsed.sources;
     qualityLabels.value = parsed.qualityLabels || {};
     availableQualities.value = parsed.availableQualities || [];
+    muxedFallbackSources.value = Array.isArray(parsed.muxedFallbackSources)
+      ? parsed.muxedFallbackSources
+      : [];
+    hasM3u8.value = !!parsed.hasM3u8;
     const preferred = (() => {
       try { return loadPreferredQuality(); } catch (e) { return "auto"; }
     })();
@@ -1697,7 +1440,6 @@ async function fetchStreamUrl(id, forceRefresh = false) {
       preferred,
       { useM3u8: useM3u8Playback() }
     );
-    hasM3u8.value = !!parsed.hasM3u8;
     const resolvedInitialQuality = initialQuality || parsed.defaultQuality || availableQualities.value[0] || "";
     if (availableQualities.value.length === 1 && resolvedInitialQuality) {
       const actualSources = sources.value;
@@ -1718,14 +1460,8 @@ async function fetchStreamUrl(id, forceRefresh = false) {
     }
     selectedQuality.value = resolvedInitialQuality;
     await nextTick();
-    muxedFallbackSources.value = Array.isArray(parsed.muxedFallbackSources)
-      ? parsed.muxedFallbackSources
-      : [];
     playerRenderKey.value += 1;
     beginInitialPlaybackRecovery(sequence, id, selectedQuality.value);
-    if (isCurrentlyUsingM3u8()) {
-      startM3u8LoadTimeout();
-    }
 
     // 自動再生が有効なら候補IDだけ確認する（プリフェッチは行わない）
     try {
@@ -1768,12 +1504,10 @@ function markPlayerReady(event) {
   ) {
     clearInitialPlaybackRecovery();
   }
-  if (videoRef.value && videoRef.value.readyState >= 3) {
-    clearM3u8LoadTimeout();
-  }
 }
 
 function markPlayerPlaying(event) {
+  m3u8PlaybackAttempted.value = true;
   playerReady.value = true;
   playerBuffering.value = false;
   playbackEstablished.value = true;
@@ -1795,9 +1529,17 @@ function markPlayerPlaying(event) {
   }
 }
 
+function handlePlaybackAttempt(event) {
+  if (event?.currentTarget && event.currentTarget !== videoRef.value) return;
+  if (!isCurrentlyUsingM3u8()) return;
+  m3u8PlaybackAttempted.value = true;
+  startM3u8LoadTimeout();
+}
+
 function markPlayerBuffering() {
   if (playerReady.value) playerBuffering.value = true;
   if (isCurrentlyUsingM3u8()) {
+    m3u8PlaybackAttempted.value = true;
     startM3u8LoadTimeout();
   }
 }
@@ -1854,273 +1596,4 @@ watch(videoRef, (newEl, oldEl) => {
 
 </script>
 
-<style scoped>
-.error-box {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 140px;
-  padding: 24px 28px;
-  border: 2px solid #d9534f;
-  border-radius: 12px;
-  background: #fff1f0;
-  color: #8b1a1a;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.7;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 14px;
-}
-
-.error-title {
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.error-message {
-  max-width: 760px;
-}
-
-.error-box.premiere-scheduled {
-  min-height: 220px;
-  padding: 0 0 26px;
-  border: 1px solid var(--text-secondary);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--text-primary);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
-  align-items: center;
-  text-align: center;
-  gap: 16px;
-  overflow: hidden;
-}
-
-.error-box.premiere-scheduled .error-title {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 11px 16px;
-  background: transparent;
-  color: #fff;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: clamp(18px, 2.5vw, 23px);
-  line-height: 1.3;
-}
-
-.error-box.premiere-scheduled .error-title::before {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  margin: 0 10px 2px 0;
-  border-radius: 50%;
-  background: #d22;
-  content: "";
-}
-
-.error-box.premiere-scheduled .error-message {
-  padding: 4px 22px 0;
-  color: #fff;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: clamp(15px, 2vw, 18px);
-  line-height: 1.6;
-}
-
-.premiere-scheduled-at {
-  padding: 8px 16px;
-  border: 1px solid var(--text-secondary);
-  border-radius: 2px;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.error-box .reload-button {
-  width: auto;
-  min-width: 120px;
-  margin-top: 0;
-  padding: 9px 20px;
-  font-size: 14px;
-}
-
-.error-box.premiere-scheduled .reload-button {
-  border: 1px solid var(--text-secondary);
-  border-radius: 2px;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.error-box.premiere-scheduled .reload-button:hover {
-  background: var(--hover-bg);
-}
-
-@media (max-width: 600px) {
-  .error-box.premiere-scheduled {
-    min-height: 210px;
-    padding: 0 0 24px;
-  }
-
-  .premiere-scheduled-at {
-    max-width: calc(100% - 32px);
-    font-size: 14px;
-  }
-}
-
-.stream-status-panel {
-  min-width: min(420px, calc(100vw - 48px));
-  padding: 16px 20px;
-  border: 1px solid rgb(255 255 255 / 0.35);
-  border-radius: 10px;
-  background: rgb(0 0 0 / 0.72);
-  color: #fff;
-  text-align: center;
-  line-height: 1.6;
-}
-
-.stream-status-title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.stream-status-detail {
-  margin-top: 4px;
-  color: #b9ddff;
-  font-size: 14px;
-}
-
-.stream-status-wait {
-  margin-top: 6px;
-  color: #ffe08a;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.video-container {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  background: #000;
-  overflow: hidden;
-}
-.video-container video,
-.video-container audio {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-.audio-only {
-  position: relative;
-  width: 100%;
-  height: auto;
-  padding: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.audio-only audio {
-  padding-top: 200px;
-  display: block;
-  position: static;
-  width: 100%;
-  height: 48px;
-}
-.settings-box {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 20;
-  background: rgba(0, 0, 0, 0.75);
-  color: var(--on-accent);
-  padding: 10px;
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 14px;
-  transition: opacity 0.3s ease;
-}
-.selector {
-  background: var(--ui-dark);
-  color: var(--on-accent);
-  border: 1px solid var(--border-color);
-  padding: 4px 8px;
-  border-radius: 6px;
-  margin-left: 6px;
-}
-.reload-button {
-  margin-top: 6px;
-  padding: 6px 15px;
-  font-size: 9px;
-  background: var(--text-type2-reload);
-  color: var(--on-accent);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  width: 60%;
-}
-.reload-button:hover {
-  background: var(--text-secondary-hover);
-}
-.pip-button {
-  padding: 6px 10px;
-  border: none;
-  border-radius: 6px;
-  background: var(--text-type2-reload);
-  color: var(--on-accent);
-  font-size: 11px;
-  cursor: pointer;
-}
-.pip-button:hover:not(:disabled) {
-  background: var(--text-secondary-hover);
-}
-.pip-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-audio {
-  display: none;
-}
-.block-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 9999;
-  background: rgba(0, 0, 0, 0.315);
-  pointer-events: all;
-}
-
-.unmute-prompt {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  background: rgba(128,128,128,0.6);
-  color: var(--on-accent);
-  padding: 8px 10px;
-  border-radius: 6px;
-  z-index: 50;
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-}
-
-.autoplay-disabled {
-  color: rgba(255,255,255,0.5);
-  position: relative;
-}
-.autoplay-disabled::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 1px;
-  background: rgba(255,255,255,0.6);
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-</style>
+<style scoped src="../styles/stream-type-2.css"></style>

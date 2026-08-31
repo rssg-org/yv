@@ -2,7 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getExternalM3u8Url,
+  getFirstM3u8Url,
+  getMediaSourceMimeType,
+  hasNonM3u8Fallback,
   isAppleDevice,
+  isM3u8PlaybackActive,
+  selectNativeHlsSources,
+  shouldMonitorM3u8Playback,
   preferH264First,
   getAllSingleStreamSources,
   getSingleStreamSourcesList,
@@ -11,6 +18,112 @@ import {
   hasPlayableSource,
   selectBestPlayableQuality,
 } from "../src/utils/streamType2Fallback.js";
+
+test("isM3u8PlaybackActive uses currentSrc instead of treating any HLS candidate as active", () => {
+  const candidates = [
+    { url: "https://example.com/video.mp4", mimeType: "video/mp4" },
+    { url: "https://example.com/video.m3u8", isM3u8: true },
+  ];
+
+  assert.equal(
+    isM3u8PlaybackActive(
+      { currentSrc: "https://example.com/video.mp4" },
+      candidates,
+    ),
+    false,
+  );
+  assert.equal(
+    isM3u8PlaybackActive(
+      { currentSrc: "https://example.com/video.m3u8" },
+      candidates,
+    ),
+    true,
+  );
+});
+
+test("isM3u8PlaybackActive only uses the first candidate before currentSrc is selected", () => {
+  assert.equal(
+    isM3u8PlaybackActive(
+      { currentSrc: "" },
+      [
+        { url: "https://example.com/video.mp4" },
+        { url: "https://example.com/video.m3u8", isM3u8: true },
+      ],
+    ),
+    false,
+  );
+  assert.equal(
+    isM3u8PlaybackActive(
+      { currentSrc: "" },
+      [{ url: "https://example.com/video.m3u8", isM3u8: true }],
+    ),
+    true,
+  );
+});
+
+test("shouldMonitorM3u8Playback waits until playback is actually attempted", () => {
+  assert.equal(
+    shouldMonitorM3u8Playback({ attempted: false, disabled: false, active: true }),
+    false,
+  );
+  assert.equal(
+    shouldMonitorM3u8Playback({ attempted: true, disabled: false, active: true }),
+    true,
+  );
+  assert.equal(
+    shouldMonitorM3u8Playback({ attempted: true, disabled: true, active: true }),
+    false,
+  );
+});
+
+test("selectNativeHlsSources exposes only native HLS until fallback", () => {
+  const sources = [
+    { url: "https://example.com/video.mp4", mimeType: "video/mp4" },
+    { url: "https://example.com/live.m3u8", isM3u8: true },
+  ];
+
+  assert.deepEqual(
+    selectNativeHlsSources(sources, { useM3u8: true }),
+    [sources[1]],
+  );
+  assert.deepEqual(
+    selectNativeHlsSources(sources, { useM3u8: false }),
+    [sources[0]],
+  );
+  assert.equal(
+    getMediaSourceMimeType(sources[1]),
+    "application/vnd.apple.mpegurl",
+  );
+});
+
+test("HLS-only responses expose an external URL when no fallback exists", () => {
+  const hlsOnly = {
+    "1080p": {
+      url: "https://example.com/live.m3u8",
+      mimeType: "application/x-mpegURL",
+      isM3u8: true,
+    },
+  };
+  assert.equal(hasNonM3u8Fallback(hlsOnly), false);
+  assert.equal(
+    getFirstM3u8Url(hlsOnly["1080p"]),
+    "https://example.com/live.m3u8",
+  );
+  assert.equal(
+    getExternalM3u8Url(hlsOnly, ["1080p"], "1080p"),
+    "https://example.com/live.m3u8",
+  );
+
+  const withProgressive = {
+    ...hlsOnly,
+    "720p": { url: "https://example.com/video.mp4", mimeType: "video/mp4" },
+  };
+  assert.equal(hasNonM3u8Fallback(withProgressive), true);
+  assert.equal(
+    getExternalM3u8Url(withProgressive, ["1080p", "720p"], "1080p"),
+    "",
+  );
+});
 
 test("isAppleDevice accurately detects Apple devices (Safari and Chrome on iOS and macOS)", () => {
   // iPhone Safari
@@ -185,5 +298,3 @@ test("selectBestPlayableQuality selects 360p and ignores 1080p/720p when 1080p/7
   assert.equal(hasPlayableSource(sources["720p"], { useM3u8: false }), false);
   assert.equal(hasPlayableSource(sources["360p"], { useM3u8: false }), true);
 });
-
-
