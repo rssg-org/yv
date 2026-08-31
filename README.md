@@ -1,6 +1,6 @@
 <h1>GAS Webアプリ デプロイ手順</h1>
 *クライアントのみの場合静的ウェブサイトを配信できる物ならなんでもOKです
-リポジトリ内の成果物を置くかhttps://github.com/ajgpw/youtube/blob/main/siatube-full.html.txtを配信(自動でアプデ反映されるからこっちのほうがおすすめ)してください
+リポジトリ内の成果物を置くかhttps://github.com/ajgpw/youtube/blob/main/siatube-full.html.txt　(自動でアプデ反映されるからこっちのほうがおすすめ)してください
 <h2>手順</h2>
 <ol>
   <li>Google Apps Script のエディタを開き、既存のコードを上書きする形で上記のコードを貼り付ける
