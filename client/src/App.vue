@@ -266,11 +266,54 @@
 <script>
 import HeaderSearch from '@/components/HeaderSearch.vue';
 import SettingsView from '@/views/SettingsView.vue';
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { loadDisplayMode, computeIsDarkFromMode } from '@/utils/settingsManager';
 import { API_CONNECTION_FAILURE_EVENT } from '@/services/siatubeApi';
 import { checkForUpdate, fetchLatestBuildHtml, replaceDocumentWithHtml } from '@/utils/versionCheck';
+
+// Lucide CDN
+const loadLucide = () => {
+  return new Promise((resolve) => {
+    if (window.lucide) {
+      resolve(window.lucide)
+      return
+    }
+
+    const existing = document.querySelector(
+      'script[data-lucide-cdn]'
+    )
+
+    if (existing) {
+      existing.addEventListener('load', () => resolve(window.lucide), {
+        once: true,
+      })
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/lucide@latest/dist/umd/lucide.js'
+    script.async = true
+    script.dataset.lucideCdn = 'true'
+
+    script.addEventListener(
+      'load',
+      () => resolve(window.lucide),
+      { once: true },
+    )
+
+    document.head.appendChild(script)
+  })
+}
+
+const refreshLucideIcons = async () => {
+  const lucide = await loadLucide()
+
+  if (lucide?.createIcons) {
+    await nextTick()
+    lucide.createIcons()
+  }
+}
 
 const POMODORO_DEFAULT = 25 * 60;
 const TIMER_DEFAULT = 5 * 60;
@@ -517,7 +560,7 @@ export default {
 
     let ticker = null;
 
-    onMounted(() => {
+    onMounted(async () => {
       window.addEventListener(
         API_CONNECTION_FAILURE_EVENT,
         handleApiConnectionFailure
@@ -557,6 +600,7 @@ export default {
           pomodoroRemaining.value -= 1;
         }
       }, 1000);
+      await refreshLucideIcons()
     });
 
     onBeforeUnmount(() => {
