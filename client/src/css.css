@@ -720,7 +720,7 @@ button {
 
 .back-to-calculator {
   position: fixed;
-  top: 10px;
+  top: 8px;
   right: 16px;
   z-index: 1200;
   display: inline-flex;
