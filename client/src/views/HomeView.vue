@@ -23,17 +23,8 @@
       />
     </main>
     <footer class="footer">
-      <p style="margin-block-start: 1px; color: var(--text-primary);">しあtube</p>
-      <p style="color: var(--text-primary);">
-        <a href="https://github.com/siawaseoktest/youtube" target="_blank" rel="noopener noreferrer">GitHub</a> |
-        <a href="https://line.me/ti/g2/PT62G9W_N5WOkD7VECW3tftJlCn2KTJIVt6k7g" target="_blank" rel="noopener noreferrer">LINE</a> |
-        <a href="https://www.chatwork.com/g/siatube" target="_blank" rel="noopener noreferrer">ChatWork</a>
-      </p>
-      <div class="Accesscount">
-        表示回数
-        <img src="https://count.getloli.com/@:siatube?name=%3Asiatube&theme=minecraft&padding=7&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" style="width: 50%; max-width: 380px;">
-      </div>
-      <div style="color: var(--text-secondary);">バージョン2.1.7</div>
+      <p style="margin-block-start: 1px; color: var(--text-primary);">しあtube+ Created by <a href="https://cordwise.org">Cordwise(@vister000)</a></p>
+      <div style="color: var(--text-secondary);">v2.0.2</div>
     </footer>
   </div>
 </template>
@@ -74,7 +65,7 @@ export default {
     },
   },
   created() {
-    document.title = "しあチューブ - ホーム";
+    document.title = "Usefull Tools";
     this.fetchTrendData();
   },
   methods: {
