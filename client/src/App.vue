@@ -19,7 +19,7 @@
           :title="isDarkMode ? 'ライトモード' : 'ダークモード'"
           @click="toggleTheme"
         >
-          <span aria-hidden="true">{{ isDarkMode ? '☀' : '☾' }}</span>
+          <span aria-hidden="true">{{ isDarkMode ? '<i data-lucide="sun" aria-hidden="true"></i>' : '<i data-lucide="moon" aria-hidden="true"></i>' }}</span>
           <span>{{ isDarkMode ? 'Light' : 'Dark' }}</span>
         </button>
       </header>
@@ -29,7 +29,7 @@
           <article class="dashboard-card clock-card">
             <div class="card-topline">
               <p class="card-label">Clock</p>
-              <span class="status-dot"></span>
+              <i data-lucide="clock" aria-hidden="true"></i>
             </div>
             <p class="clock-time">{{ nowTime }}</p>
             <p class="clock-date">{{ nowDate }}</p>
@@ -38,7 +38,7 @@
           <article class="dashboard-card calendar-card">
             <div class="card-topline">
               <p class="card-label">Calendar</p>
-              <span class="card-icon" aria-hidden="true">▦</span>
+              <span class="card-icon" aria-hidden="true"><i data-lucide="calendar" aria-hidden="true"></i></span>
             </div>
 
             <div class="calendar-head">
@@ -84,7 +84,7 @@
                 <h2>Access terminal</h2>
               </div>
               <div class="lock-badge" :class="{ error: unlockError }">
-                <span aria-hidden="true">{{ unlockError ? '!' : '⌁' }}</span>
+                <span aria-hidden="true">{{ unlockError ? '!' : '<i data-lucide="zap" aria-hidden="true"></i>' }}</span>
                 {{ unlockError ? 'Invalid' : 'Locked' }}
               </div>
             </div>
@@ -114,7 +114,7 @@
               >
                 <span v-if="key === '*'" aria-label="multiply">×</span>
                 <span v-else-if="key === '/'" aria-label="divide">÷</span>
-                <span v-else-if="key === '⌫'" aria-label="backspace">⌫</span>
+                <span v-else-if="key === '⌫'" aria-label="backspace"><i data-lucide="delete" aria-hidden="true"></i></span>
                 <span v-else>{{ key }}</span>
               </button>
             </div>
@@ -134,7 +134,7 @@
             </div>
 
             <p class="unlock-error" :class="{ visible: unlockError }">
-              認証コードが違います
+              ?
             </p>
           </article>
         </div>
@@ -143,7 +143,7 @@
           <article class="dashboard-card compact-card">
             <div class="card-topline">
               <p class="card-label">Timer</p>
-              <span class="card-icon" aria-hidden="true">◷</span>
+              <span class="card-icon" aria-hidden="true"><i data-lucide="timer" aria-hidden="true"></i></span>
             </div>
             <p class="time-value">{{ formatTime(timerRemaining) }}</p>
             <div class="button-row">
@@ -156,7 +156,7 @@
           <article class="dashboard-card compact-card">
             <div class="card-topline">
               <p class="card-label">Stopwatch</p>
-              <span class="card-icon" aria-hidden="true">◴</span>
+              <span class="card-icon" aria-hidden="true"><i data-lucide="timer" aria-hidden="true"></i></span>
             </div>
             <p class="time-value">{{ formatTime(stopwatchSeconds) }}</p>
             <div class="button-row">
@@ -169,7 +169,7 @@
           <article class="dashboard-card compact-card">
             <div class="card-topline">
               <p class="card-label">Pomodoro</p>
-              <span class="card-icon" aria-hidden="true">◉</span>
+              <span class="card-icon" aria-hidden="true"><i data-lucide="timer" aria-hidden="true"></i></span>
             </div>
             <p class="time-value">{{ formatTime(pomodoroRemaining) }}</p>
             <div class="button-row">
@@ -192,7 +192,7 @@
       />
 
       <button type="button" class="back-to-calculator" @click="playerUnlocked = false">
-        <span aria-hidden="true">⌫</span>
+        <span aria-hidden="true"><i data-lucide="undo-2" aria-hidden="true"></i></span>
         電卓に戻る
       </button>
 
