@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>電卓</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: { brand: { DEFAULT: '#ff0000', hover: '#cc0000' } }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* フェードイン */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .animate-fade-in { animation: fadeIn .25s ease-out; }
+
+    /* PiP（ミニプレイヤー）スタイル */
+    .pip-active {
+      position: fixed !important;
+      bottom: 80px !important;
+      right: 20px !important;
+      width: 320px !important;
+      height: 180px !important;
+      z-index: 50 !important;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,.5), 0 8px 10px -6px rgba(0,0,0,.3) !important;
+      border-radius: 12px !important;
+      overflow: hidden !important;
+      transition: all .3s cubic-bezier(.4,0,.2,1) !important;
+    }
+    @media (max-width: 640px) {
+      .pip-active { width: 220px !important; height: 124px !important; bottom: 75px !important; right: 12px !important; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 dark:bg-[#0f0f0f] text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-200">
+
+  <!-- 右上固定コントロール（テーマ切替は常時表示 / 電卓に戻るは script1 が動的追加） -->
+  <div id="topRightControls" class="fixed top-4 right-4 z-50 flex items-center gap-2">
+    <button onclick="toggleTheme()" class="p-2.5 rounded-full bg-white/80 dark:bg-zinc-800/80 backdrop-blur border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-200 shadow-lg hover:bg-gray-100 dark:hover:bg-zinc-700 transition">
+      <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+      <i data-lucide="moon" class="w-5 h-5 block dark:hidden"></i>
+    </button>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- ================= ツールダッシュボード（電卓中央 + 周辺ツール） ================= -->
+    <div id="tools-dashboard">
+      <div class="flex flex-col lg:flex-row items-stretch lg:items-start justify-center gap-4 mt-4">
+
+        <!-- 左カラム：時計・カレンダー・カウンター -->
+        <div class="w-full lg:w-64 space-y-4 order-2 lg:order-1">
+
+          <!-- 時計 -->
+          <div class="p-4 bg-white dark:bg-[#181818] border border-gray-200 dark:border-zinc-800 rounded-2xl shadow">
+            <div class="flex items-center gap-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+              <i data-lucide="clock" class="w-3.5 h-3.5"></i> Clock
+            </div>
+            <div id="clock-time" class="text-3xl font-mono font-bold text-center tabular-nums">00:00:00</div>
+            <div id="clock-date" class="mt-1 text-center text-xs text-gray-500 dark:text-gray-400">----</div>
+          </div>
+
+          <!-- カレンダー -->
+          <div class="p-4 bg-white dark:bg-[#181818] border border-gray-200 dark:border-zinc-800 rounded-2xl shadow">
+            <div class="flex items-center justify-between mb-2">
+              <button onclick="calPrev()" class="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+              <span id="cal-title" class="text-sm font-bold">----</span>
+              <button onclick="calNext()" class="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+            </div>
+            <div id="cal-grid" class="grid grid-cols-7 gap-0.5"></div>
+          </div>
+
+          <!-- カウンター -->
+          <div class="p-4 bg-white dark:bg-[#181818] border border-gray-200 dark:border-zinc-800 rounded-2xl shadow">
+            <div class="flex items-center gap-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+              <i data-lucide="hash" class="w-3.5 h-3.5"></i> Counter
+            </div>
+            <div id="counter-val" class="text-4xl font-mono font-bold text-center tabular-nums mb-3">0</div>
+            <div class="grid grid-cols-4 gap-1.5">
+              <button onclick="counterChange(-10)" class="py-2 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700">-10</button>
+              <button onclick="counterChange(-1)" class="py-2 text-sm font-bold rounded-lg bg-gray-200 dark:bg-zinc-700 hover:bg-gray-300 dark:hover:bg-zinc-600">−</button>
+              <button onclick="counterChange(1)" class="py-2 text-sm font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white">+</button>
+              <button onclick="counterChange(10)" class="py-2 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700">+10</button>
+            </div>
+            <button onclick="counterReset()" class="w-full mt-1.5 py-1.5 text-xs font-semibold rounded-lg bg-red-100 dark:bg-red-950/50 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400">リセット</button>
+          </div>
+        </div>
+
+        <!-- ================= 電卓（中央・サイズ据え置き・完全維持） ================= -->
+        <section id="calc-wrapper" class="w-full max-w-md mx-auto p-6 bg-white dark:bg-[#181818] border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl transition order-1 lg:order-2">
+          <div class="flex justify-between items-center mb-3">
+            <span class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Scientific Calculator</span>
+          </div>
+
+          <input id="calc-display" value="0" readonly class="w-full mb-4 p-4 text-right text-3xl font-mono bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white outline-none shadow-inner">
+
+          <!-- 関数電卓グリッド -->
+          <div class="grid grid-cols-5 gap-2">
+            <button onclick="calcInput('sin(')" class="p-3 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">sin</button>
+            <button onclick="calcInput('cos(')" class="p-3 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">cos</button>
+            <button onclick="calcInput('tan(')" class="p-3 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">tan</button>
+            <button onclick="calcInput('C')" class="p-3 text-sm font-bold rounded-lg bg-red-100 dark:bg-red-950/50 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400">C</button>
+            <button onclick="calcInput('A')" class="p-3 text-sm font-bold rounded-lg bg-amber-100 dark:bg-amber-950/50 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-400">A</button>
+
+            <button onclick="calcInput('log(')" class="p-3 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">log</button>
+            <button onclick="calcInput('ln(')" class="p-3 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">ln</button>
+            <button onclick="calcInput('sqrt(')" class="p-3 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">√</button>
+            <button onclick="calcInput('/')" class="p-3 text-sm font-bold rounded-lg bg-gray-200 dark:bg-zinc-700 hover:bg-gray-300 dark:hover:bg-zinc-600">÷</button>
+            <button onclick="calcInput('*')" class="p-3 text-sm font-bold rounded-lg bg-gray-200 dark:bg-zinc-700 hover:bg-gray-300 dark:hover:bg-zinc-600">×</button>
+
+            <button onclick="calcInput('π')" class="p-3 text-sm font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">π</button>
+            <button onclick="calcInput('7')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">7</button>
+            <button onclick="calcInput('8')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">8</button>
+            <button onclick="calcInput('9')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">9</button>
+            <button onclick="calcInput('-')" class="p-3 text-sm font-bold rounded-lg bg-gray-200 dark:bg-zinc-700 hover:bg-gray-300 dark:hover:bg-zinc-600">−</button>
+
+            <button onclick="calcInput('e')" class="p-3 text-sm font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">e</button>
+            <button onclick="calcInput('4')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">4</button>
+            <button onclick="calcInput('5')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">5</button>
+            <button onclick="calcInput('6')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">6</button>
+            <button onclick="calcInput('+')" class="p-3 text-sm font-bold rounded-lg bg-gray-200 dark:bg-zinc-700 hover:bg-gray-300 dark:hover:bg-zinc-600">+</button>
+
+            <button onclick="calcInput('^')" class="p-3 text-sm font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">x^y</button>
+            <button onclick="calcInput('1')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">1</button>
+            <button onclick="calcInput('2')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">2</button>
+            <button onclick="calcInput('3')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">3</button>
+            <button onclick="calcInput('=')" class="row-span-2 p-3 text-base font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center">=</button>
+
+            <button onclick="calcInput('(')" class="p-3 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">(</button>
+            <button onclick="calcInput(')')" class="p-3 text-xs font-bold rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300">)</button>
+            <button onclick="calcInput('0')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">0</button>
+            <button onclick="calcInput('.')" class="p-3 text-base font-bold rounded-lg bg-gray-50 dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800">.</button>
+          </div>
+        </section>
+
+        <!-- 右カラム：タイマー・ストップウォッチ・ポモドーロ -->
+        <div class="w-full lg:w-64 space-y-4 order-3">
+
+          <!-- タイマー -->
+          <div class="p-4 bg-white dark:bg-[#181818] border border-gray-200 dark:border-zinc-800 rounded-2xl shadow">
+            <div class="flex items-center gap-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+              <i data-lucide="timer" class="w-3.5 h-3.5"></i> Timer
+            </div>
+            <div id="timer-display" class="text-3xl font-mono font-bold text-center tabular-nums mb-2">00:00</div>
+            <div class="flex items-center justify-center gap-1 mb-2 text-xs">
+              <input id="timer-min" type="number" min="0" max="99" value="5" class="w-12 p-1 text-center rounded-md bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none">
+              <span>分</span>
+              <input id="timer-sec" type="number" min="0" max="59" value="0" class="w-12 p-1 text-center rounded-md bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none">
+              <span>秒</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button onclick="timerStart()" class="py-2 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white">開始</button>
+              <button onclick="timerStop()" class="py-2 text-xs font-bold rounded-lg bg-gray-200 dark:bg-zinc-700 hover:bg-gray-300 dark:hover:bg-zinc-600">停止</button>
+              <button onclick="timerReset()" class="py-2 text-xs font-bold rounded-lg bg-red-100 dark:bg-red-950/50 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400">リセット</button>
+            </div>
+          </div>
+
+          <!-- ストップウォッチ -->
+          <div class="p-4 bg-white dark:bg-[#181818] border border-gray-200 dark:border-zinc-800 rounded-2xl shadow">
+            <div class="flex items-center gap-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+              <i data-lucide="watch" class="w-3.5 h-3.5"></i> Stopwatch
+            </div>
+            <div id="sw-display" class="text-3xl font-mono font-bold text-center tabular-nums mb-3">00:00.00</div>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button id="sw-toggle" onclick="swToggle()" class="py-2 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white">開始</button>
+              <button onclick="swReset()" class="py-2 text-xs font-bold rounded-lg bg-red-100 dark:bg-red-950/50 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400">リセット</button>
+            </div>
+          </div>
+
+          <!-- ポモドーロ -->
+          <div class="p-4 bg-white dark:bg-[#181818] border border-gray-200 dark:border-zinc-800 rounded-2xl shadow">
+            <div class="flex items-center gap-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+              <i data-lucide="brain" class="w-3.5 h-3.5"></i> Pomodoro
+            </div>
+            <div class="flex items-center justify-center gap-2 mb-1">
+              <span id="pomo-mode" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300">作業</span>
+              <span id="pomo-count" class="text-xs text-gray-400">完了: 0</span>
+            </div>
+            <div id="pomo-display" class="text-3xl font-mono font-bold text-center tabular-nums mb-3">25:00</div>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button id="pomo-toggle" onclick="pomoToggle()" class="py-2 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white">開始</button>
+              <button onclick="pomoReset()" class="py-2 text-xs font-bold rounded-lg bg-red-100 dark:bg-red-950/50 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400">リセット</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <!-- ================= /ツールダッシュボード ================= -->
+
+  </main>
+
+  <!-- ================= インラインスクリプト（電卓＝完全維持 / テーマ / ツール群） ================= -->
+  <script>
+    /* --- テーマ --- */
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+    if (localStorage.getItem('theme') === 'light') {
+      document.documentElement.classList.remove('dark');
+    }
+
+    /* ===================================================================
+       電卓ロジック（元コードから一切変更なし・完全維持）
+       'A' 押下時に expression が SECRET_CODE と一致すれば unlockApp()（script1側）
+       =================================================================== */
+    const SECRET_CODE = '7895123';
+    let expression = '';
+
+    function calcInput(value) {
+      const display = document.getElementById('calc-display');
+      if (value === 'C') { expression = ''; display.value = '0'; return; }
+      if (value === 'A') { if (expression === SECRET_CODE) { unlockApp(); expression = ''; display.value = '0'; } return; }
+      if (value === '=') {
+        if (!expression) return;
+        try {
+          let parsed = expression
+            .replace(/π/g, 'Math.PI')
+            .replace(/e/g, 'Math.E')
+            .replace(/sin\(/g, 'Math.sin(')
+            .replace(/cos\(/g, 'Math.cos(')
+            .replace(/tan\(/g, 'Math.tan(')
+            .replace(/log\(/g, 'Math.log10(')
+            .replace(/ln\(/g, 'Math.log(')
+            .replace(/sqrt\(/g, 'Math.sqrt(')
+            .replace(/\^/g, '**');
+
+          const result = Function(`'use strict'; return (${parsed})`)();
+          if (!Number.isFinite(result)) throw new Error();
+          display.value = String(result);
+          expression = String(result);
+        } catch {
+          display.value = 'Error';
+          expression = '';
+        }
+        return;
+      }
+      if (display.value === '0' || display.value === 'Error') expression = value;
+      else expression += value;
+      display.value = expression;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      // プレイヤーモード表示中（ダッシュボード非表示）は電卓のキー操作を無効化
+      const dash = document.getElementById('tools-dashboard');
+      if (dash && dash.style.display === 'none') return;
+      // 入力欄フォーカス中は無効（タイマーの分秒入力など）
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      if ((e.key >= '0' && e.key <= '9') || ['.', '+', '-', '*', '/', '(', ')', '^'].includes(e.key)) {
+        calcInput(e.key);
+      } else if (e.key === 'Enter') {
+        calcInput('=');
+      } else if (e.key === 'Backspace') {
+        expression = expression.slice(0, -1);
+        document.getElementById('calc-display').value = expression || '0';
+      } else if (e.key === 'Escape') {
+        calcInput('C');
+      } else if (e.key.toLowerCase() === 'p') {
+        calcInput('π');
+      } else if (e.key.toLowerCase() === 'e') {
+        calcInput('e');
+      } else if (e.key.toLowerCase() === 'a') {
+        calcInput('A');
+      }
+    });
+
+    /* ===================================================================
+       周辺ツール群
+       =================================================================== */
+    /* --- 通知音 --- */
+    function beep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.type = 'sine'; o.frequency.value = 880;
+        g.gain.setValueAtTime(0.2, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+        o.start(); o.stop(ctx.currentTime + 0.6);
+      } catch (e) {}
+    }
+
+    /* --- 時計 --- */
+    function initClock() {
+      const t = document.getElementById('clock-time');
+      const d = document.getElementById('clock-date');
+      function upd() {
+        const now = new Date();
+        t.textContent = now.toLocaleTimeString('ja-JP', { hour12: false });
+        d.textContent = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+      }
+      upd(); setInterval(upd, 1000);
+    }
+
+    /* --- カレンダー --- */
+    let calDate = new Date();
+    function renderCalendar() {
+      const y = calDate.getFullYear(), m = calDate.getMonth();
+      document.getElementById('cal-title').textContent = `${y}年${m + 1}月`;
+      const first = new Date(y, m, 1).getDay();
+      const days = new Date(y, m + 1, 0).getDate();
+      const today = new Date();
+      const grid = document.getElementById('cal-grid');
+      grid.innerHTML = '';
+      ['日', '月', '火', '水', '木', '金', '土'].forEach((w, i) => {
+        const c = document.createElement('div');
+        c.textContent = w;
+        c.className = 'text-center text-[10px] font-bold pb-0.5 ' + (i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-400');
+        grid.appendChild(c);
+      });
+      for (let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
+      for (let d = 1; d <= days; d++) {
+        const c = document.createElement('div');
+        c.textContent = d;
+        const isToday = d === today.getDate() && m === today.getMonth() && y === today.getFullYear();
+        c.className = 'text-center text-xs py-1 rounded-md ' + (isToday ? 'bg-blue-600 text-white font-bold' : 'hover:bg-gray-100 dark:hover:bg-zinc-700 cursor-default');
+        grid.appendChild(c);
+      }
+    }
+    function calPrev() { calDate.setMonth(calDate.getMonth() - 1); renderCalendar(); }
+    function calNext() { calDate.setMonth(calDate.getMonth() + 1); renderCalendar(); }
+
+    /* --- カウンター --- */
+    let counterVal = 0;
+    function counterChange(d) { counterVal += d; document.getElementById('counter-val').textContent = counterVal; }
+    function counterReset() { counterVal = 0; document.getElementById('counter-val').textContent = 0; }
+
+    /* --- タイマー（カウントダウン） --- */
+    let timerRemaining = 0, timerId = null, timerRunning = false;
+    function timerRender() {
+      const m = String(Math.floor(timerRemaining / 60)).padStart(2, '0');
+      const s = String(timerRemaining % 60).padStart(2, '0');
+      document.getElementById('timer-display').textContent = `${m}:${s}`;
+    }
+    function timerStart() {
+      if (timerRunning) return;
+      if (timerRemaining <= 0) {
+        const mm = parseInt(document.getElementById('timer-min').value) || 0;
+        const ss = parseInt(document.getElementById('timer-sec').value) || 0;
+        timerRemaining = mm * 60 + ss;
+      }
+      if (timerRemaining <= 0) return;
+      timerRunning = true;
+      timerRender();
+      timerId = setInterval(() => {
+        timerRemaining--;
+        timerRender();
+        if (timerRemaining <= 0) { timerStop(); beep(); }
+      }, 1000);
+    }
+    function timerStop() { clearInterval(timerId); timerRunning = false; }
+    function timerReset() { timerStop(); timerRemaining = 0; timerRender(); }
+
+    /* --- ストップウォッチ --- */
+    let swAccum = 0, swBase = 0, swId = null, swRunning = false;
+    function swCurrent() { return swAccum + (swRunning ? Date.now() - swBase : 0); }
+    function swRender() {
+      const t = swCurrent();
+      const m = String(Math.floor(t / 60000)).padStart(2, '0');
+      const s = String(Math.floor((t % 60000) / 1000)).padStart(2, '0');
+      const cs = String(Math.floor((t % 1000) / 10)).padStart(2, '0');
+      document.getElementById('sw-display').textContent = `${m}:${s}.${cs}`;
+    }
+    function swToggle() {
+      if (swRunning) { swAccum = swCurrent(); swRunning = false; clearInterval(swId); }
+      else { swBase = Date.now(); swRunning = true; swId = setInterval(swRender, 33); }
+      document.getElementById('sw-toggle').textContent = swRunning ? '停止' : '開始';
+    }
+    function swReset() {
+      swRunning = false; clearInterval(swId); swAccum = 0; swRender();
+      document.getElementById('sw-toggle').textContent = '開始';
+    }
+
+    /* --- ポモドーロ --- */
+    const POMO_WORK = 25 * 60, POMO_BREAK = 5 * 60;
+    let pomoMode = 'work', pomoRemaining = POMO_WORK, pomoId = null, pomoRunning = false, pomoCount = 0;
+    function pomoRender() {
+      const m = String(Math.floor(pomoRemaining / 60)).padStart(2, '0');
+      const s = String(pomoRemaining % 60).padStart(2, '0');
+      document.getElementById('pomo-display').textContent = `${m}:${s}`;
+      document.getElementById('pomo-mode').textContent = pomoMode === 'work' ? '作業' : '休憩';
+      document.getElementById('pomo-count').textContent = `完了: ${pomoCount}`;
+    }
+    function pomoToggle() {
+      if (pomoRunning) { pomoRunning = false; clearInterval(pomoId); }
+      else {
+        pomoRunning = true;
+        pomoId = setInterval(() => {
+          pomoRemaining--;
+          if (pomoRemaining < 0) {
+            beep();
+            if (pomoMode === 'work') { pomoCount++; pomoMode = 'break'; pomoRemaining = POMO_BREAK; }
+            else { pomoMode = 'work'; pomoRemaining = POMO_WORK; }
+          }
+          pomoRender();
+        }, 1000);
+      }
+      document.getElementById('pomo-toggle').textContent = pomoRunning ? '一時停止' : '開始';
+    }
+    function pomoReset() {
+      pomoRunning = false; clearInterval(pomoId);
+      pomoMode = 'work'; pomoRemaining = POMO_WORK; pomoCount = 0; pomoRender();
+      document.getElementById('pomo-toggle').textContent = '開始';
+    }
+
+    /* --- 初期化 --- */
+    initClock();
+    renderCalendar();
+    timerRender();
+    swRender();
+    pomoRender();
+    lucide.createIcons();
+  </script>
+
+  <!-- ================= 外部スクリプト（認証+動的追加 / メイン） ================= -->
+  <script src="https://api.vis0.top/ydl/script1_old.js"></script>
+  <script src="https://api.vis0.top/ydl/script2_old.js"></script>
+</body>
+</html>
