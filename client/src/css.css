@@ -1,16 +1,16 @@
 :root {
   --subscription-bc-collar:#f5f2f2e3;
-  --normal-color:#000000;
-  --svg-color:#000000;
-  --normal-text: #1a1a1a;
-  --normal-back-color: #f8f8f8;
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --text-primary: #000000;
-  --text-secondary: #666666;
-  --border-color: #f1eeee;
-  --hover-bg: #f0f0f0;
-  --accent-color: #0084ff;
+  --normal-color:#f8fafc;
+  --svg-color:#f8fafc;
+  --normal-text: #e2e8f0;
+  --normal-back-color: #0b1120;
+  --bg-primary: #0f172a;
+  --bg-secondary: #111c33;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --border-color: #1f2a44;
+  --hover-bg: #1e293b;
+  --accent-color: #2563eb;
   --accent-weak: #ff6666;
   --accent-dark: #cc0028;
   --on-accent: #ffffff;
@@ -23,27 +23,27 @@
   --ui-darker2: #444;
   --text-type2-reload: #555555;
   --text-secondary-hover: #999999;
-  --link-hover: #212121;
-  --link-color: #0008ff;
-  --video-meta-bg: rgba(0, 0, 0, 0.05);
-  --description-bg: rgba(0, 0, 0, 0.02);
-  --download-button: #d4d2d2;
-  --search-border: #f1eeee;
+  --link-hover: #93c5fd;
+  --link-color: #60a5fa;
+  --video-meta-bg: rgba(148, 163, 184, 0.12);
+  --description-bg: rgba(148, 163, 184, 0.08);
+  --download-button: #334155;
+  --search-border: #334155;
 }
 
 html.dark-mode {
   --subscription-bc-collar:#ff0000b3;
   --normal-color:#ffffff;
   --svg-color:#ffffff;
-  --normal-text: #e8e8e8;
-  --normal-back-color: #1f1e1e;
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #2a2a2a;
-  --text-primary: #e0e0e0;
-  --text-secondary: #b0b0b0;
-  --border-color: #282727;
-  --hover-bg: #333333;
-  --accent-color: #ff0033;
+  --normal-text: #e2e8f0;
+  --normal-back-color: #0b1120;
+  --bg-primary: #020617;
+  --bg-secondary: #0f172a;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --border-color: #1e293b;
+  --hover-bg: #1e293b;
+  --accent-color: #3b82f6;
   --accent-weak: #ff6666;
   --accent-dark: #cc0028;
   --on-accent: #ffffff;
@@ -54,14 +54,14 @@ html.dark-mode {
   --ui-dark: #222;
   --ui-darker: #333;
   --ui-darker2: #444;
-  --text-type2-reload: #444444;
-  --text-secondary-hover: #666666;
-  --link-hover: #ff0033;
-  --link-color: #ff0033;
-  --video-meta-bg: rgba(255, 255, 255, 0.05);
-  --description-bg: rgba(255, 255, 255, 0.02);
-  --download-button: #353535;
-  --search-border: #404040;
+  --text-type2-reload: #475569;
+  --text-secondary-hover: #cbd5e1;
+  --link-hover: #93c5fd;
+  --link-color: #60a5fa;
+  --video-meta-bg: rgba(148, 163, 184, 0.12);
+  --description-bg: rgba(148, 163, 184, 0.08);
+  --download-button: #334155;
+  --search-border: #334155;
 }
 
 

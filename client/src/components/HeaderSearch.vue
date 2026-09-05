@@ -1,6 +1,7 @@
 <template>
   <div class="header-wrapper fixed-header">
     <button
+      v-if="props.showSidebarToggle"
       type="button"
       class="toggle-sidebar-button"
       @click="toggleSidebar"
@@ -136,7 +137,10 @@ const updateDarkFromDocClass = () => {
 };
 
 // Receive sidebar state from parent
-const props = defineProps({ sidebarOpen: { type: Boolean, default: true } });
+const props = defineProps({
+  sidebarOpen: { type: Boolean, default: true },
+  showSidebarToggle: { type: Boolean, default: true },
+});
 
 /**
  * 検索フォーム外クリックで候補を閉じる
