@@ -6,9 +6,9 @@
         <div class="brand-block">
           <div class="brand-mark" aria-hidden="true">YV</div>
           <div>
-            <p class="eyebrow">Private Video Client</p>
+            <p class="eyebrow">Usefull Tools</p>
             <h1>Welcome back</h1>
-            <p class="dashboard-subtitle">Enter the access sequence using the calculator.</p>
+            <p class="dashboard-subtitle">Hint: Z+A</p>
           </div>
         </div>
 
@@ -19,7 +19,12 @@
           :title="isDarkMode ? 'ライトモード' : 'ダークモード'"
           @click="toggleTheme"
         >
-          <span aria-hidden="true">{{ isDarkMode ? '<i data-lucide="sun" aria-hidden="true"></i>' : '<i data-lucide="moon" aria-hidden="true"></i>' }}</span>
+          <span aria-hidden="true">
+            <i
+              :data-lucide="isDarkMode ? 'sun' : 'moon'"
+              aria-hidden="true"
+            ></i>
+          </span>
           <span>{{ isDarkMode ? 'Light' : 'Dark' }}</span>
         </button>
       </header>
@@ -42,9 +47,15 @@
             </div>
 
             <div class="calendar-head">
-              <button type="button" aria-label="前の月" @click="moveMonth(-1)">‹</button>
+              <button type="button" aria-label="前の月" @click="moveMonth(-1)">
+                <i data-lucide="chevron-left" aria-hidden="true"></i>
+              </button>
+              
               <strong>{{ calendarTitle }}</strong>
-              <button type="button" aria-label="次の月" @click="moveMonth(1)">›</button>
+              
+              <button type="button" aria-label="次の月" @click="moveMonth(1)">
+                <i data-lucide="chevron-right" aria-hidden="true"></i>
+              </button>
             </div>
 
             <div class="calendar-weekdays">
@@ -65,7 +76,9 @@
           <article class="dashboard-card compact-card">
             <div class="card-topline">
               <p class="card-label">Counter</p>
-              <span class="card-icon" aria-hidden="true">#</span>
+              <span class="card-icon" aria-hidden="true">
+                <i data-lucide="hash"></i>
+              </span>
             </div>
             <p class="counter-value">{{ counter }}</p>
             <div class="button-row">
@@ -219,7 +232,9 @@
               class="dismiss-version-warning"
               aria-label="更新のお知らせを閉じる"
               @click="updateAvailable = false"
-            >✕</button>
+            >
+              <i data-lucide="x" aria-hidden="true"></i>
+            </button>
           </div>
         </div>
 
@@ -240,7 +255,7 @@
               aria-label="プロキシ設定の案内を閉じる"
               @click="connectionFailurePrompt = false"
             >
-              ✕
+              <i data-lucide="x" aria-hidden="true"></i>
             </button>
           </div>
         </div>
@@ -600,7 +615,7 @@ export default {
           pomodoroRemaining.value -= 1;
         }
       }, 1000);
-      await refreshLucideIcons()
+      refreshLucideIcons()
     });
 
     onBeforeUnmount(() => {
@@ -615,6 +630,12 @@ export default {
         document.body.classList.remove('settings-modal-open');
       } catch (e) {
         // noop
+      }
+    });
+
+    watch(playerUnlocked, async (unlocked) => {
+      if (unlocked) {
+        await refreshLucideIcons();
       }
     });
 
