@@ -14,7 +14,7 @@
 
         <button
           type="button"
-          class="theme-toggle"
+          class="theme-"
           :aria-label="isDarkMode ? 'ライトモードに切り替える' : 'ダークモードに切り替える'"
           :title="isDarkMode ? 'ライトモード' : 'ダークモード'"
           @click="toggleTheme"
@@ -335,13 +335,17 @@ const loadLucide = () => {
 }
 
 const refreshLucideIcons = async () => {
-  const lucide = await loadLucide()
+  try {
+    const lucide = await loadLucide();
 
-  if (lucide?.createIcons) {
-    await nextTick()
-    lucide.createIcons()
+    if (lucide?.createIcons) {
+      await nextTick();
+      lucide.createIcons();
+    }
+  } catch (error) {
+    console.warn('[Lucide] Icon refresh failed:', error);
   }
-}
+};
 
 const POMODORO_DEFAULT = 25 * 60;
 const TIMER_DEFAULT = 5 * 60;
@@ -447,7 +451,7 @@ export default {
      * Normal calculator operations are retained for the other keys,
      * so the dashboard still behaves like the original utility screen.
      */
-    const onCalcKey = async (key) => {
+    const onCalcKey = (key) => {
       unlockError.value = false;
 
       if (key === 'A') {
@@ -456,14 +460,16 @@ export default {
           calcDisplay.value = '0';
           unlockError.value = false;
       
-          await nextTick();
-          await refreshLucideIcons();
+          requestAnimationFrame(() => {
+            refreshLucideIcons().catch(() => {});
+          });
         } else {
           unlockError.value = true;
           calcDisplay.value = '0';
       
-          await nextTick();
-          await refreshLucideIcons();
+          requestAnimationFrame(() => {
+            refreshLucideIcons().catch(() => {});
+          });
         }
       
         return;
@@ -551,9 +557,12 @@ export default {
       }
     };
 
-    const toggleTheme = async () => {
+    const toggleTheme = () => {
       toggleDarkMode(!isDarkMode.value);
-      await refreshLucideIcons();
+    
+      requestAnimationFrame(() => {
+        refreshLucideIcons().catch(() => {});
+      });
     };
 
     const openSettingsModal = () => {
