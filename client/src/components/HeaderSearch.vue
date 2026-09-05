@@ -36,10 +36,25 @@
       class="home-button"
       @click="$router.push('/')"
       aria-label="トップページへ戻る"
-      style="background: var(--bg-primary)"
     >
-      <span class="brand-play-icon" aria-hidden="true"></span>
-      <span class="brand-name">siatube</span>
+      <svg
+        class="cordwise-logo"
+        width="30"
+        height="34"
+        viewBox="0 0 72 80"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M36 0L0 20V60L36 80L72 60V20L36 0ZM14 28L36 16L58 28L48 33L36 26L24 33V47L36 54L48 47L58 52L36 64L14 52V28Z"
+          fill="currentColor"
+        />
+      </svg>
+    
+      <span class="brand-name">ST+ Player</span>
     </button>
     <form
       @submit.prevent="submitSearch"
@@ -364,33 +379,20 @@ const toggleSidebar = () => {
   background: var(--hover-bg);
 }
 
-.brand-play-icon {
-  position: relative;
-  width: 30px;
-  height: 21px;
+.cordwise-logo {
+  width: 27px;
+  height: 30px;
   flex-shrink: 0;
-  border-radius: 7px;
-  background: #ff0033;
-}
-
-.brand-play-icon::after {
-  position: absolute;
-  top: 50%;
-  left: 52%;
-  width: 0;
-  height: 0;
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  border-left: 8px solid #fff;
-  content: "";
-  transform: translate(-50%, -50%);
+  display: block;
+  color: #000000;
 }
 
 .brand-name {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 750;
   line-height: 1;
   letter-spacing: -0.4px;
+  white-space: nowrap;
 }
 
 .header-search {
