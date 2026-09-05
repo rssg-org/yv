@@ -30,7 +30,7 @@
     </main>
     <footer class="footer">
       <p style="margin-block-start: 1px; color: var(--text-primary);">しあtube+ Created by<a href="https://cordwise.org">Cordwise(@vister000)</a></p>
-      <div style="color: var(--text-secondary);">v2.0.5</div>
+      <div style="color: var(--text-secondary);">v2.0.6</div>
     </footer>
   </div>
 </template>
