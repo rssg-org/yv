@@ -396,12 +396,13 @@ const toggleSidebar = () => {
 }
 
 .header-search {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(600px, calc(100vw - 420px));
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 600px;
+  margin: 0 auto;
+  position: relative;
   height: 40px;
-  margin: 0;
 }
 
 .search-input {
