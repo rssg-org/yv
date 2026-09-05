@@ -21,7 +21,13 @@
         >
           <span aria-hidden="true">
             <i
-              :data-lucide="isDarkMode ? 'sun' : 'moon'"
+              v-if="isDarkMode"
+              data-lucide="sun"
+              aria-hidden="true"
+            ></i>
+            <i
+              v-else
+              data-lucide="moon"
               aria-hidden="true"
             ></i>
           </span>
@@ -97,7 +103,14 @@
                 <h2>Access terminal</h2>
               </div>
               <div class="lock-badge" :class="{ error: unlockError }">
-                <span aria-hidden="true">{{ unlockError ? '!' : '<i data-lucide="zap" aria-hidden="true"></i>' }}</span>
+                <span aria-hidden="true">
+                  <i
+                    v-if="!unlockError"
+                    data-lucide="zap"
+                    aria-hidden="true"
+                  ></i>
+                  <span v-else>!</span>
+                </span>
                 {{ unlockError ? 'Invalid' : 'Locked' }}
               </div>
             </div>
@@ -434,7 +447,7 @@ export default {
      * Normal calculator operations are retained for the other keys,
      * so the dashboard still behaves like the original utility screen.
      */
-    const onCalcKey = (key) => {
+    const onCalcKey = async (key) => {
       unlockError.value = false;
 
       if (key === 'A') {
@@ -442,10 +455,17 @@ export default {
           playerUnlocked.value = true;
           calcDisplay.value = '0';
           unlockError.value = false;
+      
+          await nextTick();
+          await refreshLucideIcons();
         } else {
           unlockError.value = true;
           calcDisplay.value = '0';
+      
+          await nextTick();
+          await refreshLucideIcons();
         }
+      
         return;
       }
 
@@ -531,8 +551,9 @@ export default {
       }
     };
 
-    const toggleTheme = () => {
+    const toggleTheme = async () => {
       toggleDarkMode(!isDarkMode.value);
+      await refreshLucideIcons();
     };
 
     const openSettingsModal = () => {
@@ -630,12 +651,6 @@ export default {
         document.body.classList.remove('settings-modal-open');
       } catch (e) {
         // noop
-      }
-    });
-
-    watch(playerUnlocked, async (unlocked) => {
-      if (unlocked) {
-        await refreshLucideIcons();
       }
     });
 
