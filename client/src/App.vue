@@ -459,17 +459,9 @@ export default {
           playerUnlocked.value = true;
           calcDisplay.value = '0';
           unlockError.value = false;
-      
-          requestAnimationFrame(() => {
-            refreshLucideIcons().catch(() => {});
-          });
         } else {
           unlockError.value = true;
           calcDisplay.value = '0';
-      
-          requestAnimationFrame(() => {
-            refreshLucideIcons().catch(() => {});
-          });
         }
       
         return;
@@ -559,10 +551,6 @@ export default {
 
     const toggleTheme = () => {
       toggleDarkMode(!isDarkMode.value);
-    
-      requestAnimationFrame(() => {
-        refreshLucideIcons().catch(() => {});
-      });
     };
 
     const openSettingsModal = () => {
@@ -645,7 +633,6 @@ export default {
           pomodoroRemaining.value -= 1;
         }
       }, 1000);
-      refreshLucideIcons()
     });
 
     onBeforeUnmount(() => {
