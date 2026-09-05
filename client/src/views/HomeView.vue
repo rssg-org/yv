@@ -1,21 +1,27 @@
 <template>
   <div>
     <!-- カテゴリ切り替えボタン -->
-    <nav class="category-nav">
+    <nav class="category-nav" aria-label="動画カテゴリ">
       <button
         v-for="cat in categories"
         :key="cat.key"
+        type="button"
+        class="category-button"
         :class="{ active: selectedCategory === cat.key }"
         @click="selectedCategory = cat.key"
       >
         {{ cat.label }}
       </button>
     </nav>
-
+    
     <main>
-      <div v-if="loading" class="loading">読み込み中...</div>
+      <div v-if="loading" class="loading">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <span>動画を読み込んでいます...</span>
+      </div>
+    
       <div v-if="error" class="error">{{ error }}</div>
-
+    
       <VideoList
         v-if="!loading && !error && selectedVideos.length"
         :videos="selectedVideos"
@@ -94,37 +100,81 @@ export default {
 }
 .category-nav {
   display: flex;
-  gap: 1rem;
-  padding: 1rem;
+  align-items: center;
   justify-content: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem;
   background-color: var(--bg-primary);
-  transition: background-color 0.3s ease;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  scrollbar-width: none;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
-.category-nav button {
-  padding: 0.5rem 1rem;
-  border: none;
+
+.category-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.category-button {
+  flex-shrink: 0;
+  padding: 0.55rem 1.15rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
   background: var(--bg-secondary);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 4px;
-  font-weight: bold;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
 }
-.category-nav button:hover {
+
+.category-button:hover {
   background-color: var(--hover-bg);
+  color: var(--text-primary);
 }
-.category-nav button.active {
+
+.category-button:active {
+  transform: scale(0.96);
+}
+
+.category-button.active {
   background-color: var(--accent-color);
+  border-color: var(--accent-color);
   color: var(--on-accent);
 }
+
 .error {
   color: var(--accent-weak);
   padding: 1rem;
 }
 .loading {
-  padding: 1rem;
-  text-align: center;
-  color: var(--text-primary);
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: loading-spin 0.75s linear infinite;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 main {
   padding: 1rem;
