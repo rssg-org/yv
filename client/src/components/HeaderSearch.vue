@@ -192,13 +192,32 @@ onBeforeUnmount(() => {
  * 検索候補を取得
  */
 const onInput = async () => {
-  if (fetchController) fetchController.abort();
+  if (fetchController) {
+    fetchController.abort();
+  }
+
+  const keyword = query.value.trim();
+
+  if (!keyword) {
+    suggestions.value = [];
+    selectedIndex.value = -1;
+    return;
+  }
+
   fetchController = new AbortController();
-  suggestions.value = await fetchSearchSuggestions(
-    query.value.trim(),
-    fetchController.signal
-  );
-  selectedIndex.value = -1;
+
+  try {
+    suggestions.value = await fetchSearchSuggestions(
+      keyword,
+      fetchController.signal
+    );
+    selectedIndex.value = -1;
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.error("[HeaderSearch] Suggestion fetch failed:", error);
+      suggestions.value = [];
+    }
+  }
 };
 
 /**
@@ -377,13 +396,12 @@ const toggleSidebar = () => {
 }
 
 .header-search {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  max-width: 600px;
-  margin: 0 auto;
-  position: relative;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(600px, calc(100vw - 420px));
   height: 40px;
+  margin: 0;
 }
 
 .search-input {
