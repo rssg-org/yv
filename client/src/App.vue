@@ -180,7 +180,8 @@
                 type="button"
                 :class="{
                   operator: ['+', '-', '*', '/'].includes(key),
-                  action: ['C', '⌫', '='].includes(key),
+                  action: ['⌫', '='].includes(key),
+                  clear: key === 'C',
                   auth: key === 'A',
                 }"
                 @click="onCalcKey(key)"
