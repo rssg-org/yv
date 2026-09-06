@@ -1,6 +1,6 @@
 <h1>GAS Webアプリ デプロイ手順</h1>
 *クライアントのみの場合静的ウェブサイトを配信できる物ならなんでもOKです
-リポジトリ内の成果物を置くかhttps://github.com/ajgpw/youtube/blob/main/siatube-full.html.txt　(自動でアプデ反映されるからこっちのほうがおすすめ)してください
+リポジトリ内の成果物を置くかhttps://mcp.nvacod.top/latest.txt　(自動でアプデ反映されるからこっちのほうがおすすめ)を配置してください
 <h2>手順</h2>
 <ol>
   <li>Google Apps Script のエディタを開き、既存のコードを上書きする形で上記のコードを貼り付ける
@@ -8,7 +8,7 @@
       <li>デプロイしても真っ白な画面になってしまう場合は<br>
       <code>https://raw.githubusercontent.com/ajgpw/youtube/refs/heads/main/index.html.txt</code><br>
       を<br>
-      <code>https://raw.githubusercontent.com/ajgpw/youtube/refs/heads/main/siatube-full.html.txt</code><br>
+      <code>https://mcp.nvacod.top/latest.txt</code><br>
       に置き換えて再度デプロイしてください</li>
     </ul>
   </li>
@@ -18,7 +18,7 @@
   <li>必要に応じて説明を入力し、アクセス権限を設定</li>
   <li><strong>「デプロイ」</strong> をクリック</li>
   <li>認証画面が出た場合は、指示に従って認証を完了</li>
-  <li>デプロイ完了後に表示されるURLにアクセスすると、GitHub 上の <code>index.html.txt</code> のHTMLが実行されます</li>
+  <li>デプロイ完了後に表示されるURLにアクセスすると、GitHub 上の <code>latest.txt</code> のHTMLが実行されます</li>
   <li>既存デプロイの更新時も、<code>siatubeApiGet</code> を含む上記コード全体へ置き換えて再デプロイしてください</li>
   <li>長い continuation token 用の中継を有効にするため、GAS 版より先に、このリポジトリの最新 <code>server/index.js</code> を <code>siawaseok.duckdns.org</code> へデプロイしてください</li>
 </ol>
@@ -33,7 +33,7 @@
   <li>CSS と JS が大量に HTML 内に含まれているため、端末によってはページが重くなる場合があります（ブラウザで実行する分には影響はありません）。</li>
 </ul>
 
-<h2>連絡先・コミュニティ</h2>
+<h2>ベースにしたSiatubeの連絡先・コミュニティ</h2>
 <ul style="list-style: none; padding: 0;">
   <li>
     <img src="https://www.google.com/a/cpanel/images/favicon.ico" alt="メール" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
