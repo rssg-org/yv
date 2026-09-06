@@ -301,10 +301,6 @@ button {
 .calc-grid button:focus-visible,
 .button-row button:focus-visible,
 .calendar-head button:focus-visible,
-.back-to-calculator:focus-visible {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
-}
 
 .dashboard-grid {
   width: min(1320px, 100%);
@@ -720,21 +716,61 @@ button {
 
 .back-to-calculator {
   position: fixed;
-  top: 8px;
-  right: 16px;
+  top: 10px;
+  right: 20px;
   z-index: 1200;
+
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  gap: 8px;
+
+  height: 40px;
+  padding: 0 16px;
+
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 9px 13px;
+
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
-  backdrop-filter: blur(14px);
+  background: var(--bg-secondary);
+
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
+}
+
+.back-to-calculator:hover {
+  background: var(--hover-bg);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+}
+
+.back-to-calculator:active {
+  transform: translateY(1px);
+}
+
+.back-to-calculator:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.back-to-calculator > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-to-calculator svg {
+  width: 18px;
+  height: 18px;
+  color: currentColor;
 }
 
 .unlocked-content {
