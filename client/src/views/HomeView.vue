@@ -29,8 +29,9 @@
       />
     </main>
     <footer class="footer">
-      <p style="margin-block-start: 1px; color: var(--text-primary);">しあtube+ Created by<a href="https://cordwise.org">Cordwise(@vister000)</a></p>
-      <div style="color: var(--text-secondary);">v2.1.0</div>
+      <p style="margin-block-start: 1px; color: var(--text-primary);">Cordtube Created by<a href="https://cordwise.org">Cordwise(@vister000)</a></p>
+      <p style="margin-block-start: 1px; color: var(--text-primary);">Based on しあtube</p>
+      <div style="color: var(--text-secondary);">v2.1.1</div>
     </footer>
   </div>
 </template>
