@@ -598,19 +598,19 @@ button {
   border-color: rgba(37, 99, 235, 0.13);
 }
 
-.calc-grid button.action {
+.calc-grid button.action button.auth{
   color: var(--dashboard-muted);
   background: var(--dashboard-button);
 }
 
-.calc-grid button.auth {
+.calc-grid button.clear {
   color: #fff;
   border-color: transparent;
   background: linear-gradient(135deg, var(--accent-color), #7c3aed);
   box-shadow: 0 9px 24px var(--dashboard-glow);
 }
 
-.calc-grid button.auth:hover {
+.calc-grid button.clear:hover {
   filter: brightness(1.06);
 }
 
