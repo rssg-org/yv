@@ -929,9 +929,9 @@ export default {
       '.',
       '=',
       '+',
-      'C',
-      '⌫',
       'A',
+      '⌫',
+      'C',
     ];
 
     const counter = ref(0);
