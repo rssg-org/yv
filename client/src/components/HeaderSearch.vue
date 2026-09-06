@@ -358,7 +358,7 @@ const toggleSidebar = () => {
 
 .home-button {
   border: none;
-  background: var(--bg-primary);
+  /* background: var(--bg-primary); */
   color: var(--text-primary);
   border-radius: 8px;
   width: auto;
