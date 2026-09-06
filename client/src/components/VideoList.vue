@@ -1,6 +1,6 @@
 <template>
   <section>
-    <h2 style="margin-inline-start: 7px; color: var(--text-primary);">{{ title }}</h2>
+    <h2 class="video-list-heading">{{ title }}</h2>
     <ul class="video-list">
       <li v-for="video in videos" :key="`${video.type}:${video.id}:${video.playlistId || ''}`" class="video-item">
         <!-- 動画 -->
@@ -140,6 +140,15 @@ body {
   margin: 0;
   padding: 0;
   font-family: Meiryo, "メイリオ", sans-serif;
+}
+
+.video-list-heading {
+  margin: 0;
+  padding: 18px 10px 8px;
+  color: var(--text-primary);
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .title-link{
