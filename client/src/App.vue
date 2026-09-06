@@ -135,7 +135,7 @@
             <div class="calculator-head">
               <div>
                 <p class="card-label">Calculator</p>
-                <h2>Access terminal</h2>
+                <h2>Simple Calculator</h2>
               </div>
 
               <div
@@ -159,7 +159,7 @@
             </div>
 
             <div class="calc-display-wrap">
-              <span class="display-prefix">ACCESS</span>
+              <span class="display-prefix">DISPLAY</span>
 
               <input
                 class="calc-display"
